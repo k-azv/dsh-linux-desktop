@@ -1,6 +1,8 @@
 # Linux distribution automation
 
-The `linux` branch preserves full upstream ancestry. Daily checks select the highest newer stable or `rc.N` GitHub Release named `dsh-vX.Y.Z`, and dispatch sync explicitly. Sync merges upstream tags into `sync/<tag>`, verifies a pushed commit, merges the PR with a merge commit, and releases the verified RPM, AppImage, and checksums as `<tag>-linux.1`. The sync-state update is part of that verified commit and reaches `linux` through the merge.
+English | [中文](README.zh.md)
+
+The `linux` branch preserves full upstream ancestry. Daily checks select the highest newer stable or `rc.N` GitHub Release named `dsh-vX.Y.Z`, and dispatch sync explicitly. Sync merges upstream tags into `sync/<tag>`, verifies the exact candidate in an unprivileged job, atomically merges that verified tree into `linux`, and releases the verified RPM, AppImage, and checksums as `<tag>-linux.1`. The sync-state update is part of that verified commit and reaches `linux` through the merge.
 
 ## Repository setup
 
@@ -19,6 +21,8 @@ The coordinator supplies these Desktop adaptations, `apps/desktop/AGENTS.md`, an
 
 `target_tag` starts a new merge from `linux`. `verify_ref` selects an exact SHA; with `target_tag`, it must be the current head of `sync/<tag>`. Without `target_tag`, it verifies an exact commit without publishing. `dry_run` defaults to true and performs local sync/build verification. Publishing a previously pushed sync head requires `target_tag`, `verify_ref`, `dry_run=false`, and `release=true`. Same-repository `sync/*` pull requests run verification; explicit dispatch drives publication.
 
-Infrastructure failures are classified before healing. Network/registry transport failures receive at most two retries; disk, authentication, and unknown failures stop. Merge conflicts, recognized build failures, and smoke failures can invoke Codex. Each Codex process is limited to 15 minutes, 12 reasoning/message completions, and 40 tool calls; build healing runs once. Healing cannot change automation files.
+Infrastructure failures are classified before healing. Network/registry transport failures receive at most two retries; disk, authentication, and unknown failures stop. Merge conflicts, recognized build failures, and smoke failures can invoke Codex. Each Codex process is limited to 15 minutes, 12 reasoning/message completions, and 40 tool calls; build healing runs once. Healing cannot change automation files. Verification jobs have read-only repository permission and define no `GH_TOKEN`, `OPENAI_API_KEY`, or `OPENAI_BASE_URL`; write credentials belong only to preparation, healing, and publication.
 
 An owner decision produces a Draft PR labeled `needs-decision`, with context, options, and a recommendation. A paused merge checkpoint may contain conflict markers; it remains blocked from publication until the owner replies `/decide <instruction>` and the exact resulting commit passes all verification. The owner-comment workflow reads the PR context, applies the instruction, and explicitly dispatches verification and release for its head SHA.
+
+`force_resync=true` explicitly allows replacing the same `sync/<tag>` branch even when an open PR still tracks it; close or abandon that PR first. Daily checks skip dispatch while any open `sync/*` PR exists, and a normal sync refuses to overwrite an open PR for the same branch.

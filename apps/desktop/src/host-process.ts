@@ -154,7 +154,7 @@ export class DesktopHostFatalError extends Error {
   get diagnostic(): string | undefined { return this.#diagnostic }
 }
 
-/** One Web backend running under the Electron executable in Node mode. */
+/** One Web backend running under the bundled Node executable. */
 export class DesktopHostProcess {
   private runId: PluginOperationRunId | undefined
   private child: ChildProcess | undefined
@@ -176,7 +176,7 @@ export class DesktopHostProcess {
   }>()
 
   /**
-   * @param node - Absolute Electron executable in Node mode.
+   * @param node - Absolute bundled Node executable, including Electron in Node mode.
    * @param runtimeDir - Immutable packages carried by the current application.
    * @param projectDir - Desktop plugin profile and child working directory.
    * @param inspectPort - Optional loopback inspector port for workspace development.
@@ -200,6 +200,9 @@ export class DesktopHostProcess {
     private readonly onPlatformSession?: (session: PlatformSession | null) => void,
     private readonly onPluginOperation?: (record: PluginOperationRecord) => void,
   ) {}
+
+  /** Operating system process identifier of the live Host child, if running. */
+  get pid(): number | undefined { return this.child?.pid }
 
   /**
    * Start this child once and await its Web application URL.

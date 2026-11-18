@@ -2,6 +2,12 @@
 
 DeepSeek Harness is an all-plugin Cordis agent harness. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`; follow [docs/AGENTS.md](docs/AGENTS.md) for documentation.
 
+## Linux downstream distribution
+
+This repository (`linux` branch) is an unofficial downstream distribution of DeepSeek Harness Desktop (`linux-x64` `.rpm` and `.AppImage`) tracking upstream `dsh-v*` stable and `rc` releases; follow [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md), [linux distribution note](.agents/notes/implemented/process/2026-11-18-linux-desktop-distribution.md), and [linux-dist README](scripts/linux-dist/README.md) first.
+
+Downstream sync and healing agents must scope code edits strictly to `apps/desktop/`, never modify `packages/`, `.github/workflows/`, or `scripts/linux-dist/`, and escalate via `DSH_DECISION_FILE` when a fix changes sandbox security, removes features, adds RPM dependencies, or crosses `apps/desktop/`. Upstream PR-only requirements below (`docs/upgrade-guide/`, `snapshots/`, SDK expected outputs, `dsh-pr-description`, and whole-repo `verify-md-links`) do not apply to downstream sync/healing; update [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md) or the owning process Agent Note (with paired `.zh.md` and `.i18n.yaml`) only when downstream Linux packaging, sandbox, or sync behavior changes.
+
 ## Pre-stable APIs and released Session data
 
 Public APIs are pre-stable; update every consumer. Follow [version/status](docs/session-format-status.md) and [type acknowledgements](docs/cookbook/reviewing-persistence-type-changes.md). [Adjacent migration](.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md) may add a version-named successor but never move, overwrite, or delete committed generations; predecessors imply neither fallback nor downgrade support. SQLite uses monotonic `SCHEMA_VERSION`.

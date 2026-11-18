@@ -7,7 +7,7 @@ import { DesktopUpdateSettings } from './update-settings.ts'
 import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
-import { access, readFile, writeFile } from 'node:fs/promises'
+import { access, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -207,13 +207,17 @@ interface RuntimeResources {
 
 function runtimeResources(): RuntimeResources {
   const development = !app.isPackaged
-  const node = process.execPath
+  // Standalone Node keeps libvips isolated from Electron's Linux GLib symbols.
+  const node = !development && process.platform === 'linux'
+    ? join(process.resourcesPath, 'runtime', 'primary-runtime', 'dependencies', 'node', 'bin', 'node')
+    : process.execPath
   const nodeBin = development ? join(app.getAppPath(), 'scripts', 'node-bin') : join(process.resourcesPath, 'runtime', 'bin')
   const pnpm = (development ? process.env.DSH_DESKTOP_PNPM_ENTRY : undefined)
     ?? (development ? join(app.getAppPath(), 'node_modules', 'pnpm', 'bin', 'pnpm.mjs')
       : join(process.resourcesPath, 'runtime', 'primary-runtime', 'dependencies', 'pnpm', 'bin', 'pnpm.mjs'))
   const dsh = (development ? process.env.DSH_DESKTOP_DSH_DIR : undefined)
-    ?? (development ? join(app.getAppPath(), '.desktop-build', 'development', 'project') : join(app.getAppPath(), 'dsh'))
+    ?? (development ? join(app.getAppPath(), '.desktop-build', 'development', 'project')
+      : join(process.platform === 'linux' ? process.resourcesPath : app.getAppPath(), 'dsh'))
   return { node, nodeBin, pnpm, dsh }
 }
 
@@ -607,6 +611,7 @@ async function main(): Promise<void> {
       updateTasks: (action: 'inspect' | 'lock' | 'unlock') => host.updateTasks(action),
       inspectQuit: () => host.inspectQuit(),
       resolveDragResource: (address: string, signal?: AbortSignal) => host.resolveDragResource(address, signal),
+      pid: () => host.pid,
     }
   }, (state) => {
     if (state.phase === 'error') reportFatal(state.failure, 'host')
@@ -1594,6 +1599,77 @@ async function main(): Promise<void> {
   await reconcileBackend().catch(() => undefined)
   // Window lifecycle callbacks run while backend startup is pending.
   if (isQuitting()) return
+  const linuxSmokeReport = process.platform === 'linux' && process.argv.includes('--linux-smoke-test')
+    ? process.env.DSH_LINUX_SMOKE_REPORT?.trim()
+    : undefined
+  if (linuxSmokeReport) {
+    const temporaryReport = `${linuxSmokeReport}.tmp`
+    let timer: ReturnType<typeof setInterval> | undefined
+    let writing = false
+    let written = false
+    let previousReason: string | undefined
+    const stop = (): void => {
+      if (timer !== undefined) clearInterval(timer)
+      timer = undefined
+    }
+    const waitReason = (): string | undefined => {
+      const backendState = backend.state
+      if (backendState.phase !== 'ready') {
+        return backendState.phase === 'error' ? `backend error: ${backendState.message}` : 'backend is starting'
+      }
+      if (recovery.active) return 'fatal recovery is active'
+      const activeWindow = welcomeWindow ?? mainWindow
+      if (activeWindow === undefined) return 'no active window'
+      if (activeWindow.isDestroyed()) return 'active window is destroyed'
+      if (activeWindow.webContents.isCrashed()) return 'renderer is crashed'
+      if (activeWindow.webContents.isLoadingMainFrame()) return 'renderer is still loading'
+      const hostPid = backend.host?.pid()
+      if (typeof hostPid !== 'number' || !Number.isInteger(hostPid) || hostPid <= 1) {
+        return `Host pid is ${String(hostPid)}`
+      }
+      return undefined
+    }
+    const reportReady = async (hostPid: number): Promise<void> => {
+      writing = true
+      try {
+        await writeFile(temporaryReport, `${JSON.stringify({ guiReady: true, hostReady: true, hostPid })}\n`, 'utf8')
+        await rename(temporaryReport, linuxSmokeReport)
+        written = true
+        stop()
+        console.error('desktop linux smoke: readiness report written')
+      } catch (error) {
+        try {
+          await rm(temporaryReport, { force: true })
+        } catch (cleanupError) {
+          console.error('desktop linux smoke: failed to remove temporary readiness report', cleanupError)
+        }
+        console.error('desktop linux smoke: failed to write readiness report', error)
+      } finally {
+        writing = false
+      }
+    }
+    const poll = (): void => {
+      if (isQuitting()) {
+        stop()
+        return
+      }
+      if (written || writing) return
+      const reason = waitReason()
+      if (reason !== previousReason) {
+        previousReason = reason
+        if (reason !== undefined) console.error(`desktop linux smoke: waiting for ${reason}`)
+        else console.error('desktop linux smoke: readiness conditions satisfied')
+      }
+      if (reason !== undefined) return
+      const hostPid = backend.host?.pid()
+      if (typeof hostPid !== 'number') return
+      void reportReady(hostPid)
+    }
+    timer = setInterval(poll, 250)
+    poll()
+    app.once('will-quit', stop)
+    app.once('before-quit', stop)
+  }
   const window = currentMainWindow()
   if (window !== undefined && development && process.env.DSH_DESKTOP_OPEN_DEVTOOLS !== '0') {
     window.webContents.openDevTools({ mode: 'detach' })

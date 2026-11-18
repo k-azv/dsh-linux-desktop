@@ -90,7 +90,7 @@ describe('cache-only submission command', () => {
     }))
   })
 
-  it.each([[], ['win-x64', '--purge-only'], ['win-x64', '--latest', '--purge-only', '--job-id', 'job-1'], ['win-x64', '--latest', '--', '--purge-only']])('rejects invalid arguments %j before uploading', async (...args) => {
+  it.each([[], ['linux-x64'], ['win-x64', '--purge-only'], ['win-x64', '--latest', '--purge-only', '--job-id', 'job-1'], ['win-x64', '--latest', '--', '--purge-only']])('rejects invalid arguments %j before uploading', async (...args) => {
     await expect(uploadDesktopTarget(args)).rejects.toThrow()
     expect(uploadDesktopRelease).not.toHaveBeenCalled()
     expect(purgeDesktopInstaller).not.toHaveBeenCalled()

@@ -11,7 +11,11 @@ export function compareTags(a, b) {
   const x = parseTag(a), y = parseTag(b)
   if (!x || !y) throw new Error('Expected stable or rc dsh-v tags')
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i] ? 1 : -1
-  return x[3] === y[3] ? 0 : x[3] === null ? 1 : y[3] === null ? -1 : x[3] > y[3] ? 1 : -1
+  const xrc = x[3], yrc = y[3]
+  if (xrc === yrc) return 0
+  if (xrc === null) return 1
+  if (yrc === null) return -1
+  return xrc > yrc ? 1 : -1
 }
 export function selectRelease(releases, current) {
   return releases.filter(r => !r.draft && parseTag(r.tag_name) && compareTags(r.tag_name, current) > 0)

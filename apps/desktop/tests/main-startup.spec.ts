@@ -79,6 +79,8 @@ const harness = await vi.hoisted(async () => {
   const menu = Object.assign(menuBuilder, { buildFromTemplate: menuBuilder, setApplicationMenu: vi.fn() })
   class FakeWindow extends EventEmitter {
     destroyed = false
+    crashed = false
+    loadingMainFrame = false
     readonly contentView = { addChildView: vi.fn(), removeChildView: vi.fn() }
     readonly urls: string[] = []
     readonly webContents = Object.assign(new EventEmitter(), {
@@ -91,6 +93,8 @@ const harness = await vi.hoisted(async () => {
       mainFrame: { url: '' },
       getZoomFactor: () => 1,
       isDestroyed: () => this.destroyed,
+      isCrashed: () => this.crashed,
+      isLoadingMainFrame: () => this.loadingMainFrame,
       setIgnoreMenuShortcuts: vi.fn(),
       focus: vi.fn(),
       sendInputEvent: vi.fn(),
@@ -153,6 +157,7 @@ const harness = await vi.hoisted(async () => {
     }
   }
   class FakeHost {
+    readonly pid = 4321
     readonly updateTasks = vi.fn(async (_action: 'inspect' | 'lock' | 'unlock') => false)
     readonly inspectQuit = vi.fn(async () => ({ activeTasks: false, scheduledTasks: false }))
     url = 'http://127.0.0.1:3080/?token=test'
@@ -1624,6 +1629,45 @@ describe('desktop main startup', () => {
     await harness.navigated.promise
     return harness.hosts[0]!
   }
+
+  async function startLinuxSmoke(report: string, loadingMainFrame = false) {
+    vi.stubGlobal('process', {
+      ...process, platform: 'linux', argv: ['desktop', '--linux-smoke-test'], resourcesPath: 'desktop-test-resources',
+    })
+    vi.stubEnv('DSH_LINUX_SMOKE_REPORT', report)
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    const window = harness.windows[0]!
+    window.loadingMainFrame = loadingMainFrame
+    harness.prepared.resolve()
+    await harness.hostStarted.promise
+    harness.hosts[0]!.ready.resolve()
+    await harness.navigated.promise
+    await vi.advanceTimersByTimeAsync(0)
+    return window
+  }
+
+  it('waits for Linux GUI and Host readiness before writing the smoke report', async () => {
+    const report = join(harness.app.getPath('userData'), 'linux-ready.json')
+    const window = await startLinuxSmoke(report, true)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(existsSync(report)).toBe(false)
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('renderer is still loading'))
+    window.loadingMainFrame = false
+    await vi.waitFor(() => { expect(existsSync(report)).toBe(true) })
+    expect(JSON.parse(readFileSync(report, 'utf8'))).toEqual({ guiReady: true, hostReady: true, hostPid: 4321 })
+    expect(existsSync(`${report}.tmp`)).toBe(false)
+  })
+
+  it('removes an incomplete Linux smoke report when publication fails', async () => {
+    const report = join(harness.app.getPath('userData'), 'linux-ready-directory')
+    mkdirSync(report)
+    await startLinuxSmoke(report)
+    await vi.waitFor(() => {
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('failed to write readiness report'), expect.anything())
+    })
+    expect(existsSync(`${report}.tmp`)).toBe(false)
+  })
 
   it.each([
     ['win32', ['--updated'], true],

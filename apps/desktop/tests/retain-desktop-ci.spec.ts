@@ -119,6 +119,8 @@ it.each([
 
 it('rejects missing or ambiguous archival routing before packaging starts', () => {
   const env = { RUNNER_NAME: 'dedicated', DSH_DESKTOP_TARGET_PLATFORM: 'darwin', DSH_DESKTOP_TARGET_ARCH: 'arm64' }
+  expect(() => resolveDesktopRetentionRunner({ DSH_DESKTOP_TARGET_PLATFORM: 'linux', DSH_DESKTOP_TARGET_ARCH: 'x64' }))
+    .toThrow('linux-x64')
   expect(() => resolveDesktopRetentionRunner(env)).toThrow('DESKTOP_PUBLISH_RUNNERS is required')
   expect(() => resolveDesktopRetentionRunner({ ...env, DESKTOP_PUBLISH_RUNNERS: JSON.stringify({
     dedicated: { label: 'dsh-shared', target: 'mac-arm64' }, other: { label: 'dsh-shared', target: 'mac-arm64' },

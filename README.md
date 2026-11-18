@@ -8,6 +8,13 @@ It is built on an **everything-is-a-plugin** architecture and powered by [Cordis
 
 Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
 
+## Unofficial Linux desktop downstream
+
+This repository (`k-azv/dsh-linux-desktop`, default branch `linux`) builds unofficial unsigned `linux-x64` `.rpm` and `.AppImage` Desktop packages from upstream `dsh-v*` stable and `rc` releases.
+
+- Releases live under this repository's GitHub Releases as `<upstream_tag>-linux.1` and are not endorsed by DeepSeek AI.
+- Downstream packaging rules, Chromium sandbox retention, and sync automation live in [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md), [linux distribution note](.agents/notes/implemented/process/2026-11-18-linux-desktop-distribution.md), and [linux-dist README](scripts/linux-dist/README.md).
+
 ## Developer preview
 
 DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**

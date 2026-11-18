@@ -2,7 +2,12 @@
 import { appendFile, readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { desktopTargetBuildPaths, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
-import { desktopBuildRecordFilename, desktopUpdateMetadataFilename, resolveDesktopUpdateChannel } from './desktop-auto-update-environment.mjs'
+import {
+  desktopBuildRecordFilename,
+  desktopUpdateMetadataFilename,
+  resolveDesktopUpdateChannel,
+  type DesktopAutoUpdateTarget,
+} from './desktop-auto-update-environment.mjs'
 import { loadDesktopPackageEnvironment } from './desktop-package-environment.mjs'
 import { retainDesktopRelease, type DesktopRetainedSource } from './desktop-release-store.ts'
 import { validateDesktopBuildVersion } from './desktop-build-version.mjs'
@@ -13,6 +18,10 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name]
   if (!value) throw new Error(`desktop retention: ${name} is required`)
   return value
+}
+
+function assertRetainedTarget(target: ReturnType<typeof resolveDesktopBuildTarget>): asserts target is DesktopAutoUpdateTarget {
+  if (target === 'linux-x64') throw new Error('desktop retention: linux-x64 does not retain official artifacts')
 }
 
 /**
@@ -34,6 +43,7 @@ export function desktopReleasesRoot(env: NodeJS.ProcessEnv): string {
  */
 export function resolveDesktopRetentionRunner(env: NodeJS.ProcessEnv): string {
   const target = resolveDesktopBuildTarget(env)
+  assertRetainedTarget(target)
   const routes = desktopPublishRunnersSchema.parse(JSON.parse(required(env, 'DESKTOP_PUBLISH_RUNNERS')))
   const route = routes[required(env, 'RUNNER_NAME')]
   if (!route || !route.target.includes(target)
@@ -52,6 +62,7 @@ export function resolveDesktopRetentionRunner(env: NodeJS.ProcessEnv): string {
 export async function retainDesktopCi(env: NodeJS.ProcessEnv, appRoot = resolve(import.meta.dirname, '..')): Promise<string> {
   const target = resolveDesktopBuildTarget(env)
   const runnerLabel = resolveDesktopRetentionRunner(env)
+  assertRetainedTarget(target)
   const windows = target === 'win-x64'
   const platform = windows ? 'win32' : 'darwin'
   const settings = loadDesktopPackageEnvironment(platform, env, appRoot, { unsigned: true })

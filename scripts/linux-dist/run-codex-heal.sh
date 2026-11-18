@@ -18,17 +18,21 @@ import { readFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 const instruction = process.env.DSH_OWNER_INSTRUCTION
   ? readFileSync(process.env.DSH_OWNER_INSTRUCTION, 'utf8') : ''
+const state = `${process.env.RUNNER_TEMP ?? '/tmp'}/dsh-codex`
 const prompt = `Repair only the Linux downstream sync/build/smoke failure. First read apps/desktop/AGENTS.md
 and .agents/notes/implemented/process/. If either is missing, request a decision rather than inventing policy.
 Read the failure log at ${process.env.DSH_CODEX_LOG}. Preserve upstream ancestry and all Linux workflows.
 Never modify .github/workflows, scripts/linux-dist, credentials, git remotes, or release state.
 A draft sync checkpoint may contain conflict markers; resolve those using the owner instruction.
+The sandbox mounts .git/index read-only: edit or remove conflicted files only, and do not run git add
+or any other command that writes the index.
 Do not commit, push, merge, open PRs, release, or use network services other than dependency fetching.
 If a product or architectural choice needs the owner's decision, write ${process.env.DSH_DECISION_FILE}
 with: ## Decision, ## Context, ## Options (at least two with tradeoffs), ## Recommendation.
 Then exit successfully without guessing. Otherwise resolve conflicts and repair source only.
 Owner decision (if present):\n${instruction}`
-const args = ['exec', '--json', '--ephemeral', '--sandbox', 'workspace-write', '-c', 'approval_policy="never"']
+const args = ['exec', '--json', '--ephemeral', '--sandbox', 'workspace-write', '--add-dir', state,
+  '-c', 'approval_policy="never"']
 // OPENAI_BASE_URL selects an API-key provider instead of ChatGPT authentication.
 if (process.env.OPENAI_BASE_URL) {
   args.push('-c', 'model_provider="linux_api"', '-c', 'model_providers.linux_api.name="Linux API"',

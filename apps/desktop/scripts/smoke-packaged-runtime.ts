@@ -11,12 +11,30 @@ const paths = resolveDesktopTargetBuildPaths()
 const { values } = parseArgs({ options: { unsigned: { type: 'boolean', default: false }, 'skip-notarization': { type: 'boolean', default: false } }, allowPositionals: false })
 const target = resolveDesktopBuildTarget()
 const windows = target === 'win-x64'
+const linux = target === 'linux-x64'
 const artifacts = desktopArtifactOutput(paths, { unsigned: values.unsigned, skipNotarization: values['skip-notarization'] }).directory
-const application = windows ? join(artifacts, 'win-unpacked')
-  : join(artifacts, target === 'mac-arm64' ? 'mac-arm64' : 'mac', 'DeepSeek Harness.app', 'Contents')
-const resources = join(application, windows ? 'resources' : 'Resources')
-const executable = windows ? join(application, 'DeepSeek Harness.exe') : join(application, 'MacOS', 'DeepSeek Harness')
+
+function applicationDirectory(): string {
+  if (windows) return join(artifacts, 'win-unpacked')
+  if (linux) return join(artifacts, 'linux-unpacked')
+  return join(artifacts, target === 'mac-arm64' ? 'mac-arm64' : 'mac', 'DeepSeek Harness.app', 'Contents')
+}
+
+function resourcesDirectory(application: string): string {
+  return join(application, windows || linux ? 'resources' : 'Resources')
+}
+
+function applicationExecutable(application: string, resources: string): string {
+  if (windows) return join(application, 'DeepSeek Harness.exe')
+  if (linux) return join(resources, 'runtime', 'primary-runtime', 'dependencies', 'node', 'bin', 'node')
+  return join(application, 'MacOS', 'DeepSeek Harness')
+}
+
+const application = applicationDirectory()
+const resources = resourcesDirectory(application)
+const executable = applicationExecutable(application, resources)
 const descriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(paths.dsh).release.version,
   resolveDesktopPackageTarget(target))
 if (windows && !values.unsigned) await verifyWindowsCode(application)
-await smokePreparedRuntime(join(resources, 'app.asar', 'dsh'), executable, join(resources, 'runtime'), descriptor)
+await smokePreparedRuntime(linux ? join(resources, 'dsh') : join(resources, 'app.asar', 'dsh'),
+  executable, join(resources, 'runtime'), descriptor)

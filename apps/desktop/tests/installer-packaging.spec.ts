@@ -125,3 +125,38 @@ describe('installer preparation preserves application dependencies', () => {
     for (const name of referenced) expect(packaged.has(`lib/${name}`)).toBe(true)
   })
 })
+
+it('packages Linux dsh as external resources with an RPM-compatible package name', async () => {
+  const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+  const config = createElectronBuilderConfig({
+    DSH_DESKTOP_APP_ID: 'com.example.installer',
+    DSH_DESKTOP_TARGET_PLATFORM: 'linux',
+    DSH_DESKTOP_TARGET_ARCH: 'x64',
+    DSH_DESKTOP_UNSIGNED: '1',
+  }, 'linux', 'x64')
+  const { validateConfiguration } = await import('app-builder-lib/out/util/config/config.js')
+  const packager = new Packager({ projectDir: tmpdir() })
+  Object.defineProperty(packager, 'config', { value: config })
+  await validateConfiguration(packager.config, packager.debugLogger)
+  expect(config.rpm.packageName).toMatch(/^[a-z0-9][a-z0-9+._-]*$/u)
+  expect(config.electronFuses).toEqual({ runAsNode: false })
+  const dshResource = config.extraResources.find(resource => resource.to === 'dsh')
+  expect(dshResource).toMatchObject({
+    to: 'dsh',
+    filter: ['**/*', '!**/*.{js,cjs,mjs,ts,cts,mts,css}.map', '!**/*.tsbuildinfo'],
+  })
+  expect(dshResource?.from).toMatch(/[\\/]dsh$/u)
+  expect(config.files).not.toContainEqual(expect.objectContaining({ to: 'dsh' }))
+  expect(config.files).not.toContainEqual(expect.objectContaining({ to: 'dsh/node_modules' }))
+})
+
+it('keeps Electron Node mode for non-Linux desktop packages', async () => {
+  const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+  const config = createElectronBuilderConfig({
+    DSH_DESKTOP_APP_ID: 'com.example.installer',
+    DSH_DESKTOP_TARGET_PLATFORM: 'darwin',
+    DSH_DESKTOP_TARGET_ARCH: 'arm64',
+    DSH_DESKTOP_UNSIGNED: '1',
+  }, 'darwin', 'arm64')
+  expect(config.electronFuses).toEqual({ runAsNode: true })
+})

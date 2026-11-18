@@ -1,4 +1,4 @@
-/** Exercise filtered Desktop native and HTML dependencies under its Electron Node runtime. */
+/** Exercise filtered Desktop native and HTML dependencies under its bundled Node runtime. */
 
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'

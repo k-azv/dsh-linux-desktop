@@ -3,7 +3,7 @@ set -euo pipefail
 rpm=$(realpath "${1:?built RPM required}")
 [[ -f "$rpm" && "$rpm" == *.rpm ]] || exit 1
 : "${TARGET_TAG:?source release tag required}"
-docker run --rm -i -e TARGET_TAG -v "$rpm:/tmp/desktop.rpm:ro" fedora:44 bash -se <<'FEDORA'
+docker run --rm -i -e TARGET_TAG -v "$rpm:/tmp/desktop.rpm:ro" "${DSH_FEDORA_IMAGE:-fedora:44}" bash -se <<'FEDORA'
 dnf install -y /tmp/desktop.rpm rpmdevtools findutils
 package=$(rpm -qp --qf '%{NAME}' /tmp/desktop.rpm)
 mapfile -t sandboxes < <(rpm -ql "$package" | grep '^/opt/.*/chrome-sandbox$')

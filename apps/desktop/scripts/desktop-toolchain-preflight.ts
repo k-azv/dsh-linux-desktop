@@ -68,6 +68,15 @@ async function probeWindowsInstallerToolchain(environment: NodeJS.ProcessEnv): P
   return failures
 }
 
+async function probeLinuxRpmToolchain(): Promise<DesktopToolchainProbeFailure[]> {
+  try {
+    await run('rpmbuild', ['--version'], { timeout: 20_000 })
+    return []
+  } catch (error) {
+    return [{ tool: 'rpmbuild', detail: error instanceof Error ? error.message : String(error) }]
+  }
+}
+
 /**
  * Probe every external tool one packaging run needs.
  * @param platform - Target platform; a Windows target already requires a Windows build host.
@@ -75,13 +84,14 @@ async function probeWindowsInstallerToolchain(environment: NodeJS.ProcessEnv): P
  * @returns Every probe that failed, empty when the host can run the packaging sequence.
  */
 export async function probeDesktopToolchain(
-  platform: 'darwin' | 'win32',
+  platform: 'darwin' | 'win32' | 'linux',
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<readonly DesktopToolchainProbeFailure[]> {
   const failures: DesktopToolchainProbeFailure[] = []
   const tar = await probeTar()
   if (tar !== undefined) failures.push({ tool: 'tar', detail: tar })
   if (platform === 'win32') failures.push(...await probeWindowsInstallerToolchain(environment))
+  if (platform === 'linux') failures.push(...await probeLinuxRpmToolchain())
   return failures
 }
 
@@ -92,7 +102,7 @@ export async function probeDesktopToolchain(
  * @returns Resolves when every probe passes.
  */
 export async function requireDesktopToolchain(
-  platform: 'darwin' | 'win32',
+  platform: 'darwin' | 'win32' | 'linux',
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const failures = await probeDesktopToolchain(platform, environment)

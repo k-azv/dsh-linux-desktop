@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-11-18-linux-desktop-distribution.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-11-18-linux-desktop-distribution.md
+/agent-note-unofficial-linux-desktop-downstream-distribution-and-sandbox-policy:
+  en: 00273cacf74a315d
+  zh: e223e4a586383474
+/agent-note-unofficial-linux-desktop-downstream-distribution-and-sandbox-policy/problem:
+  en: 9fda12ed3b8cc0c7
+  zh: 05596aa81dcac478
+/agent-note-unofficial-linux-desktop-downstream-distribution-and-sandbox-policy/decision:
+  en: b503787087079acc
+  zh: 25282900a3f36e32
+/agent-note-unofficial-linux-desktop-downstream-distribution-and-sandbox-policy/consequences:
+  en: 3e3b070d316e244f
+  zh: a06e49b5f08f95f8
+/agent-note-unofficial-linux-desktop-downstream-distribution-and-sandbox-policy/alternatives-considered:
+  en: 1719dc665dca6029
+  zh: 26f136008abe804b

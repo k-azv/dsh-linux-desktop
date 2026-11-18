@@ -23,7 +23,7 @@ jobs:
       PR_NUMBER: ${{ github.event.issue.number }}
       OWNER_INSTRUCTION: ${{ github.event.comment.body }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: linux
           fetch-depth: 0
@@ -47,10 +47,10 @@ jobs:
           git config user.email '70378740+k-azv@users.noreply.github.com'
           printf '%s\n' "$OWNER_INSTRUCTION" > "$RUNNER_TEMP/owner-instruction.txt"
           gh pr view "$PR_NUMBER" --json body --jq .body > "$RUNNER_TEMP/decision-context.txt"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - name: Apply owner decision using bounded Codex
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -62,9 +62,10 @@ jobs:
       - name: Publish decision checkpoint or resume exact SHA verification
         run: |
           set -euo pipefail
-          [[ -z "$(git diff HEAD -- .github/workflows scripts/linux-dist)" ]]
-          [[ -z "$(git diff --name-only --diff-filter=U)" ]]
+          bash "$RUNNER_TEMP/linux-control/stage-resolved-conflicts.sh"
+          [[ -z "$(git status --porcelain --untracked-files=all -- .github/workflows scripts/linux-dist)" ]]
           git add -A
+          [[ -z "$(git diff --cached --name-only -- .github/workflows scripts/linux-dist)" ]]
           if ! git diff --cached --quiet; then
             git -c core.hooksPath=/dev/null commit -m "Apply owner decision for $TARGET_TAG"
             git push origin "HEAD:refs/heads/$SYNC_BRANCH"
@@ -73,10 +74,15 @@ jobs:
             gh pr edit "$PR_NUMBER" --body-file "$RUNNER_TEMP/dsh-codex/needs-decision.md"
             gh label create needs-decision --color D4C5F9 --description 'Owner decision required' --force
             gh pr edit "$PR_NUMBER" --add-label needs-decision
-            gh pr ready "$PR_NUMBER" --undo || [[ $(gh pr view "$PR_NUMBER" --json isDraft --jq .isDraft) == true ]]
+            if [[ $(gh pr view "$PR_NUMBER" --json isDraft --jq .isDraft) != true ]]; then
+              gh pr ready "$PR_NUMBER" --undo
+            fi
             exit 0
           fi
-          gh pr edit "$PR_NUMBER" --remove-label needs-decision
+          has_decision_label=$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name] | index("needs-decision")')
+          if [[ "$has_decision_label" != null ]]; then
+            gh pr edit "$PR_NUMBER" --remove-label needs-decision
+          fi
           sha=$(git rev-parse HEAD)
           gh workflow run linux-sync-and-build.yml --ref linux \
             -f target_tag="$TARGET_TAG" -f verify_ref="$sha" -f dry_run=false -f release=true

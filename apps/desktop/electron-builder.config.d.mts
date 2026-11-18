@@ -9,18 +9,25 @@ export interface DesktopElectronBuilderConfig {
   readonly directories: {
     readonly output: string
   }
-  readonly files: readonly [
-    ...string[],
-    { readonly from: string, readonly to: 'dsh', readonly filter: readonly ['**/*'] },
-    { readonly from: string, readonly to: 'dsh/node_modules', readonly filter: readonly ['**/*'] },
-  ]
+  readonly files: readonly (string | {
+    readonly from: string
+    readonly to: 'dsh' | 'dsh/node_modules'
+    readonly filter: readonly string[]
+  })[]
   readonly extraMetadata: { readonly dshDesktopAppId: string }
   readonly asarUnpack: readonly string[]
+  readonly electronFuses: { readonly runAsNode: boolean }
   readonly extraResources: readonly [
     { readonly from: string, readonly to: 'runtime' },
-    { readonly from: string, readonly to: 'icon.png' },
-    ...{ readonly from: string, readonly to: 'tray.ico' }[],
+    ...{
+      readonly from: string
+      readonly to: 'dsh' | 'icon.png' | 'tray.ico'
+      readonly filter?: readonly string[]
+    }[],
   ]
+  readonly rpm: {
+    readonly packageName: string
+  }
   readonly mac: {
     readonly extendInfo: {
       readonly CFBundleLocalizations: readonly string[]

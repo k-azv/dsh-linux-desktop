@@ -8,6 +8,13 @@ DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的�
 
 文档：[https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
 
+## 非官方 Linux 桌面端下游发行版
+
+本仓库（`k-azv/dsh-linux-desktop`，默认分支 `linux`）基于上游 `dsh-v*` 正式版与 `rc` 发布构建非官方未签名的 `linux-x64` `.rpm` 与 `.AppImage` 桌面端安装包。
+
+- 发行产物发布在本仓库的 GitHub Releases（版本号为 `<upstream_tag>-linux.1`），与 DeepSeek 官方渠道无关联。
+- 下游打包规范、Chromium 沙箱保留策略与自动同步流程见 [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md)、[Linux 发行版决策说明](.agents/notes/implemented/process/2026-11-18-linux-desktop-distribution.zh.md) 与 [linux-dist README](scripts/linux-dist/README.zh.md)。
+
 ## 开发者预览
 
 DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**

@@ -29,7 +29,7 @@ export function assertOfficeSkillsLoadable(results: ReadonlyArray<{ readonly nam
  * Check CLI package operations, Host startup, its frontend, external plugins, packaged Office skill loading,
  * and real Office rendering, conversion, and recalculation.
  * @param root - Materialized dsh resources.
- * @param node - Prepared target Electron executable.
+ * @param node - Prepared target Node executable.
  * @param runtime - Verified resource descriptor.
  * @param environment - Credential-scrubbed build environment and private native cache.
  * @param resourcesRuntime - Bundled interpreters outside the application archive.

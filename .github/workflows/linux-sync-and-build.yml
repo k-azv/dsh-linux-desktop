@@ -18,36 +18,48 @@ on:
         description: Publish an existing sync PR after verifying verify_ref
         type: boolean
         default: false
+      force_resync:
+        description: Replace sync/<tag> even when an open PR already tracks it
+        type: boolean
+        default: false
   pull_request:
     branches: [linux]
     types: [opened, synchronize, reopened, ready_for_review]
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
 concurrency:
   group: linux-sync-and-build
   cancel-in-progress: false
 jobs:
-  linux:
+  prepare:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
        startsWith(github.event.pull_request.head.ref, 'sync/'))
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       TARGET_TAG: ${{ inputs.target_tag }}
       VERIFY_REF: ${{ inputs.verify_ref }}
       DRY_RUN: ${{ github.event_name == 'pull_request' || inputs.dry_run }}
       RELEASE_EXISTING: ${{ inputs.release }}
+      FORCE_RESYNC: ${{ inputs.force_resync }}
       PR_HEAD: ${{ github.event.pull_request.head.sha }}
       PR_BRANCH: ${{ github.event.pull_request.head.ref }}
       DSH_DESKTOP_TARGET_PLATFORM: linux
       DSH_DESKTOP_TARGET_ARCH: x64
+    outputs:
+      candidate_sha: ${{ steps.checkpoint.outputs.candidate_sha }}
+      needs_decision: ${{ steps.checkpoint.outputs.needs_decision }}
+      has_bundle: ${{ steps.bundle.outputs.has_bundle }}
+      base_sha: ${{ steps.source.outputs.base_sha }}
+      target_tag: ${{ steps.source.outputs.target_tag }}
+      dry_run: ${{ steps.source.outputs.dry_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: linux
           fetch-depth: 0
@@ -61,24 +73,43 @@ jobs:
           git config user.name 'kazv'
           git config user.email '70378740+k-azv@users.noreply.github.com'
           git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+          git fetch origin linux
+          BASE_SHA=$(git rev-parse origin/linux)
           if [[ -n "$PR_HEAD" ]]; then
             VERIFY_REF=$PR_HEAD
             TARGET_TAG=${PR_BRANCH#sync/}
           fi
           if [[ -n "$TARGET_TAG" && ! "$TARGET_TAG" =~ ^dsh-v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
-            echo 'Invalid target_tag' >&2; exit 1
+            echo 'Invalid target_tag' >&2
+            exit 1
           fi
           if [[ -n "$VERIFY_REF" && ! "$VERIFY_REF" =~ ^[0-9a-f]{40}$ ]]; then
-            echo 'verify_ref must be an exact SHA' >&2; exit 1
+            echo 'verify_ref must be an exact SHA' >&2
+            exit 1
+          fi
+          if [[ -n "$TARGET_TAG" ]]; then
+            SYNC_BRANCH="sync/$TARGET_TAG"
+          else
+            SYNC_BRANCH=''
+            DRY_RUN=true
+          fi
+          if [[ -n "$TARGET_TAG" && -z "$VERIFY_REF" && "$DRY_RUN" != true && "$FORCE_RESYNC" != true ]]; then
+            open_pr=$(gh pr list --base linux --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number // empty')
+            if [[ -n "$open_pr" ]]; then
+              echo "Open PR #$open_pr already tracks $SYNC_BRANCH; close it or rerun with force_resync=true" >&2
+              exit 1
+            fi
           fi
           echo "TARGET_TAG=$TARGET_TAG" >> "$GITHUB_ENV"
           echo "VERIFY_REF=$VERIFY_REF" >> "$GITHUB_ENV"
-          echo "BASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          if [[ -n "$TARGET_TAG" ]]; then
-            echo "SYNC_BRANCH=sync/$TARGET_TAG" >> "$GITHUB_ENV"
-          else
-            echo "DRY_RUN=true" >> "$GITHUB_ENV"
-          fi
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          echo "SYNC_BRANCH=$SYNC_BRANCH" >> "$GITHUB_ENV"
+          echo "DRY_RUN=$DRY_RUN" >> "$GITHUB_ENV"
+          {
+            echo "base_sha=$BASE_SHA"
+            echo "target_tag=$TARGET_TAG"
+            echo "dry_run=$DRY_RUN"
+          } >> "$GITHUB_OUTPUT"
           # Keep downstream control scripts available even during a conflicted upstream merge.
           cp -r scripts/linux-dist "$RUNNER_TEMP/linux-control"
       - name: Free disk space and install Linux dependencies
@@ -87,11 +118,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rpm xvfb dbus-x11 libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libxtst6 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libsecret-1-0
           df -h
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-      - uses: pnpm/action-setup@v4
-      - uses: actions/cache@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ${{ env.PNPM_CONFIG_STORE_DIR }}
@@ -103,11 +134,12 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -n "$VERIFY_REF" ]]; then
-            git fetch origin "${SYNC_BRANCH:-$VERIFY_REF}"
-            [[ "$(git rev-parse FETCH_HEAD)" == "$VERIFY_REF" ]]
-            if [[ -n "${SYNC_BRANCH:-}" ]]; then
+            if [[ -n "$SYNC_BRANCH" ]]; then
+              git fetch origin "refs/heads/$SYNC_BRANCH"
+              [[ "$(git rev-parse FETCH_HEAD)" == "$VERIFY_REF" ]] || { echo "$SYNC_BRANCH moved from $VERIFY_REF" >&2; exit 1; }
               git checkout -B "$SYNC_BRANCH" "$VERIFY_REF"
             else
+              git fetch origin "$VERIFY_REF"
               git checkout --detach "$VERIFY_REF"
             fi
             git merge-base --is-ancestor "$BASE_SHA" HEAD
@@ -116,14 +148,17 @@ jobs:
             git checkout -B "$SYNC_BRANCH" "$BASE_SHA"
             set +e
             git merge --no-commit --no-ff "$TARGET_TAG" >"$RUNNER_TEMP/linux-merge.log" 2>&1
-            result=$?
+            merge_result=$?
             set -e
             cat "$RUNNER_TEMP/linux-merge.log"
             git rm -rf --ignore-unmatch -- .github/workflows
-            git checkout HEAD -- .github/workflows
+            git checkout "$BASE_SHA" -- .github/workflows
             [[ -z "$(git diff --cached --name-only -- .github/workflows)" ]] || { echo 'Upstream workflows entered the merge index' >&2; exit 1; }
-            if [[ $result != 0 ]] && { [[ -n "$(git diff --name-only --diff-filter=U)" ]] || ! git rev-parse -q --verify MERGE_HEAD >/dev/null; }; then
-              node "$RUNNER_TEMP/linux-control/classify-failure.mjs" "$RUNNER_TEMP/linux-merge.log" merge
+            [[ -z "$(git status --porcelain --untracked-files=all -- .github/workflows scripts/linux-dist)" ]] || {
+              echo 'Protected automation paths changed during merge' >&2
+              exit 1
+            }
+            if [[ $merge_result != 0 ]] && { [[ -n "$(git diff --name-only --diff-filter=U)" ]] || ! git rev-parse -q --verify MERGE_HEAD >/dev/null; }; then
               echo 'merge_failed=true' >> "$GITHUB_OUTPUT"
             fi
           fi
@@ -139,129 +174,562 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/codex-cli" --no-audit --no-fund @openai/codex
           export PATH="$RUNNER_TEMP/codex-cli/node_modules/.bin:$PATH"
           "$RUNNER_TEMP/linux-control/run-codex-heal.sh" "$RUNNER_TEMP/linux-merge.log"
-      - name: Commit and push sync checkpoint
+      - name: Stage resolved conflicts and commit sync checkpoint
         id: checkpoint
         run: |
           set -euo pipefail
+          bash "$RUNNER_TEMP/linux-control/stage-resolved-conflicts.sh"
           if [[ -n "$TARGET_TAG" && -z "$VERIFY_REF" ]]; then
-            # A paused merge is represented by a draft checkpoint; it cannot enter release flow.
-            if [[ ! -s "$RUNNER_TEMP/dsh-codex/needs-decision.md" ]]; then
-              [[ -z "$(git diff --name-only --diff-filter=U)" ]]
-            fi
-            [[ -z "$(git diff HEAD -- .github/workflows scripts/linux-dist)" ]] || { echo 'Automation files changed during sync/healing' >&2; exit 1; }
+            [[ -z "$(git status --porcelain --untracked-files=all -- .github/workflows scripts/linux-dist)" ]] || {
+              echo 'Protected automation paths changed before sync commit' >&2
+              exit 1
+            }
             printf '%s\n' "$TARGET_TAG" > scripts/linux-dist/state/last-synced-tag.txt
             git add -A
+            protected=$(git diff --cached --name-only -- .github/workflows scripts/linux-dist)
+            if [[ -n "$protected" && "$protected" != "scripts/linux-dist/state/last-synced-tag.txt" ]]; then
+              echo 'Automation files changed during sync/healing:' >&2
+              printf '%s\n' "$protected" >&2
+              exit 1
+            fi
             if ! git diff --cached --quiet || git rev-parse -q --verify MERGE_HEAD >/dev/null; then
               git -c core.hooksPath=/dev/null commit -m "Sync Linux desktop with $TARGET_TAG"
             fi
-            if [[ "$DRY_RUN" != true ]]; then
+          else
+            protected=$(git diff --cached --name-only -- .github/workflows scripts/linux-dist)
+            [[ -z "$protected" ]] || { echo 'Automation files changed during verification checkout' >&2; exit 1; }
+          fi
+          if [[ "$DRY_RUN" != true && -n "$SYNC_BRANCH" ]]; then
+            if [[ -n "$VERIFY_REF" ]]; then
+              git push origin "HEAD:refs/heads/$SYNC_BRANCH"
+            else
               expected=$(git ls-remote origin "refs/heads/$SYNC_BRANCH" | cut -f1)
-              git push --force-with-lease="refs/heads/$SYNC_BRANCH:$expected" origin "HEAD:refs/heads/$SYNC_BRANCH"
+              if [[ -n "$expected" ]]; then
+                git push --force-with-lease="refs/heads/$SYNC_BRANCH:$expected" origin "HEAD:refs/heads/$SYNC_BRANCH"
+              else
+                git push origin "HEAD:refs/heads/$SYNC_BRANCH"
+              fi
             fi
           fi
-          echo "verified_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - name: Verify exact source SHA and heal eligible build failures
-        id: verify
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          candidate=$(git rev-parse HEAD)
+          echo "candidate_sha=$candidate" >> "$GITHUB_OUTPUT"
+          if [[ -s "$RUNNER_TEMP/dsh-codex/needs-decision.md" ]]; then
+            echo 'needs_decision=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'needs_decision=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload owner decision note
+        if: steps.checkpoint.outputs.needs_decision == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-decision-note
+          path: ${{ runner.temp }}/dsh-codex/needs-decision.md
+          if-no-files-found: error
+          retention-days: 3
+      - name: Create exact source bundle
+        id: bundle
+        if: steps.checkpoint.outputs.needs_decision != 'true'
         run: |
           set -euo pipefail
-          if [[ -s "$RUNNER_TEMP/dsh-codex/needs-decision.md" ]]; then
-            echo 'decision=true' >> "$GITHUB_OUTPUT"; exit 0
+          candidate=$(git rev-parse HEAD)
+          if [[ "$BASE_SHA" == "$candidate" ]]; then
+            echo 'has_bundle=false' >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          git update-ref refs/dsh/verify "$candidate"
+          if ! git merge-base --is-ancestor "$BASE_SHA" refs/dsh/verify; then
+            git bundle create "$RUNNER_TEMP/source.bundle" refs/dsh/verify
+          else
+            git bundle create "$RUNNER_TEMP/source.bundle" "$BASE_SHA..refs/dsh/verify"
+          fi
+          git bundle verify "$RUNNER_TEMP/source.bundle" >/dev/null
+          echo 'has_bundle=true' >> "$GITHUB_OUTPUT"
+      - name: Upload exact source bundle
+        if: steps.bundle.outputs.has_bundle == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-bundle-initial
+          path: ${{ runner.temp }}/source.bundle
+          if-no-files-found: error
+          retention-days: 3
+
+  verify_initial:
+    needs: prepare
+    if: >-
+      needs.prepare.outputs.needs_decision != 'true' &&
+      needs.prepare.outputs.candidate_sha != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      TARGET_TAG: ${{ needs.prepare.outputs.target_tag }}
+      BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+      CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
+      DSH_DESKTOP_PACKAGE_CACHE_DIR: ${{ runner.temp }}/dsh-desktop-package-cache
+      PNPM_CONFIG_STORE_DIR: ${{ runner.temp }}/pnpm-store
+      DSH_DESKTOP_TARGET_PLATFORM: linux
+      DSH_DESKTOP_TARGET_ARCH: x64
+    outputs:
+      result: ${{ steps.verify.outputs.result }}
+      verified_sha: ${{ steps.verify.outputs.verified_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: needs.prepare.outputs.has_bundle == 'true'
+        with:
+          name: source-bundle-initial
+          path: ${{ runner.temp }}
+      - name: Check out the bundled candidate
+        run: |
+          set -euo pipefail
+          cp -r scripts/linux-dist "$RUNNER_TEMP/linux-control"
+          if [[ "${{ needs.prepare.outputs.has_bundle }}" == "true" ]]; then
+            git bundle verify "$RUNNER_TEMP/source.bundle"
+            git fetch --no-tags "$RUNNER_TEMP/source.bundle" "refs/dsh/verify:refs/dsh/verify"
+            [[ "$(git rev-parse refs/dsh/verify)" == "$CANDIDATE_SHA" ]]
+          fi
+          git checkout --detach "$CANDIDATE_SHA"
+          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
+      - name: Free disk space and install Linux dependencies
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          sudo apt-get update
+          sudo apt-get install -y rpm xvfb dbus-x11 libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libxtst6 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libsecret-1-0
+          df -h
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ${{ env.PNPM_CONFIG_STORE_DIR }}
+            ${{ env.DSH_DESKTOP_PACKAGE_CACHE_DIR }}
+          key: dsh-linux-package-cache-v1-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: dsh-linux-package-cache-v1-
+      - name: Verify bundled candidate
+        id: verify
+        run: |
+          set -euo pipefail
           export TARGET_TAG=${TARGET_TAG:-$(cat scripts/linux-dist/state/last-synced-tag.txt)}
-          retries=0; heals=0
+          retries=0
           while true; do
             sha=$(git rev-parse HEAD)
             echo "Verifying exact commit $sha"
+            rm -f "$RUNNER_TEMP/linux-failure-stage"
             if "$RUNNER_TEMP/linux-control/verify-linux.sh" >"$RUNNER_TEMP/linux-verify.log" 2>&1; then
               cat "$RUNNER_TEMP/linux-verify.log"
               git diff --exit-code HEAD
-              echo "verified_sha=$sha" >> "$GITHUB_OUTPUT"
-              break
+              {
+                echo "result=passed"
+                echo "verified_sha=$sha"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
             fi
             cat "$RUNNER_TEMP/linux-verify.log"
+            if [[ ! -f "$RUNNER_TEMP/linux-failure-stage" ]]; then
+              printf 'unknown\n' > "$RUNNER_TEMP/linux-failure-stage"
+            fi
             stage=$(cat "$RUNNER_TEMP/linux-failure-stage")
             classification=$(node "$RUNNER_TEMP/linux-control/classify-failure.mjs" "$RUNNER_TEMP/linux-verify.log" "$stage")
             action=$(jq -r .action <<< "$classification")
             echo "$classification"
             if [[ "$action" == retry && $retries -lt 2 ]]; then
-              retries=$((retries+1)); sleep 10; continue
+              retries=$((retries+1))
+              sleep 10
+              continue
             fi
-            [[ "$action" == heal && $heals -lt 1 ]] || exit 1
-            heals=$((heals+1))
-            npm install --prefix "$RUNNER_TEMP/codex-cli" --no-audit --no-fund @openai/codex
-            export PATH="$RUNNER_TEMP/codex-cli/node_modules/.bin:$PATH"
-            "$RUNNER_TEMP/linux-control/run-codex-heal.sh" "$RUNNER_TEMP/linux-verify.log"
-            [[ -z "$(git diff HEAD -- .github/workflows scripts/linux-dist)" ]] || exit 1
-            [[ -z "$(git diff --name-only --diff-filter=U)" ]] || exit 1
-            git add -A
-            if ! git diff --cached --quiet; then
-              git -c core.hooksPath=/dev/null commit -m "Repair Linux desktop verification for $TARGET_TAG"
-              if [[ "$DRY_RUN" != true ]]; then git push origin "HEAD:refs/heads/$SYNC_BRANCH"; fi
+            if [[ "$action" == heal ]]; then
+              echo 'result=heal' >> "$GITHUB_OUTPUT"
+              exit 0
             fi
-            if [[ -s "$RUNNER_TEMP/dsh-codex/needs-decision.md" ]]; then
-              echo 'decision=true' >> "$GITHUB_OUTPUT"; exit 0
-            fi
+            exit 1
           done
+      - name: Upload healable verification failure
+        if: steps.verify.outputs.result == 'heal'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verify-failure-initial
+          path: |
+            ${{ runner.temp }}/linux-verify.log
+            ${{ runner.temp }}/linux-failure-stage
+          if-no-files-found: error
+          retention-days: 3
+      - name: Archive verified artifacts
+        if: steps.verify.outputs.result == 'passed'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-x64-${{ steps.verify.outputs.verified_sha }}
+          path: ${{ runner.temp }}/linux-release/*
+          if-no-files-found: error
+
+  heal:
+    needs: [prepare, verify_initial]
+    if: needs.verify_initial.outputs.result == 'heal'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_TAG: ${{ needs.prepare.outputs.target_tag }}
+      VERIFY_REF: ${{ inputs.verify_ref }}
+      DRY_RUN: ${{ needs.prepare.outputs.dry_run }}
+      RELEASE_EXISTING: ${{ inputs.release }}
+      BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+      CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
+      SYNC_BRANCH: sync/${{ needs.prepare.outputs.target_tag }}
+      DSH_DESKTOP_PACKAGE_CACHE_DIR: ${{ runner.temp }}/dsh-desktop-package-cache
+      PNPM_CONFIG_STORE_DIR: ${{ runner.temp }}/pnpm-store
+      DSH_DESKTOP_TARGET_PLATFORM: linux
+      DSH_DESKTOP_TARGET_ARCH: x64
+    outputs:
+      candidate_sha: ${{ steps.checkpoint.outputs.candidate_sha }}
+      needs_decision: ${{ steps.checkpoint.outputs.needs_decision }}
+      has_bundle: ${{ steps.bundle.outputs.has_bundle }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: needs.prepare.outputs.has_bundle == 'true'
+        with:
+          name: source-bundle-initial
+          path: ${{ runner.temp }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: verify-failure-initial
+          path: ${{ runner.temp }}
+      - name: Check out the bundled candidate
+        run: |
+          set -euo pipefail
+          cp -r scripts/linux-dist "$RUNNER_TEMP/linux-control"
+          if [[ "${{ needs.prepare.outputs.has_bundle }}" == "true" ]]; then
+            git bundle verify "$RUNNER_TEMP/source.bundle"
+            git fetch --no-tags "$RUNNER_TEMP/source.bundle" "refs/dsh/verify:refs/dsh/verify"
+            [[ "$(git rev-parse refs/dsh/verify)" == "$CANDIDATE_SHA" ]]
+          fi
+          git checkout --detach "$CANDIDATE_SHA"
+          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
+      - name: Free disk space and install Linux dependencies
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          sudo apt-get update
+          sudo apt-get install -y rpm xvfb dbus-x11 libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libxtst6 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libsecret-1-0
+          df -h
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ${{ env.PNPM_CONFIG_STORE_DIR }}
+            ${{ env.DSH_DESKTOP_PACKAGE_CACHE_DIR }}
+          key: dsh-linux-package-cache-v1-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: dsh-linux-package-cache-v1-
+      - name: Heal verified failure with bounded Codex
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/codex-cli" --no-audit --no-fund @openai/codex
+          export PATH="$RUNNER_TEMP/codex-cli/node_modules/.bin:$PATH"
+          "$RUNNER_TEMP/linux-control/run-codex-heal.sh" "$RUNNER_TEMP/linux-verify.log"
+      - name: Stage conflicts and publish healed checkpoint
+        id: checkpoint
+        run: |
+          set -euo pipefail
+          bash "$RUNNER_TEMP/linux-control/stage-resolved-conflicts.sh"
+          [[ -z "$(git status --porcelain --untracked-files=all -- .github/workflows scripts/linux-dist)" ]] || {
+            echo 'Protected automation paths changed during healing' >&2
+            exit 1
+          }
+          git add -A
+          protected=$(git diff --cached --name-only -- .github/workflows scripts/linux-dist)
+          [[ -z "$protected" ]] || { echo 'Automation files changed during healing' >&2; exit 1; }
+          if ! git diff --cached --quiet; then
+            git -c core.hooksPath=/dev/null commit -m "Repair Linux desktop verification for $TARGET_TAG"
+          fi
+          if [[ "$DRY_RUN" != true ]]; then
+            git push origin "HEAD:refs/heads/$SYNC_BRANCH"
+          fi
+          candidate=$(git rev-parse HEAD)
+          echo "candidate_sha=$candidate" >> "$GITHUB_OUTPUT"
+          if [[ -s "$RUNNER_TEMP/dsh-codex/needs-decision.md" ]]; then
+            echo 'needs_decision=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'needs_decision=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload owner decision note
+        if: steps.checkpoint.outputs.needs_decision == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-decision-note
+          path: ${{ runner.temp }}/dsh-codex/needs-decision.md
+          if-no-files-found: error
+          retention-days: 3
+      - name: Create healed source bundle
+        id: bundle
+        if: steps.checkpoint.outputs.needs_decision != 'true'
+        run: |
+          set -euo pipefail
+          candidate=$(git rev-parse HEAD)
+          if [[ "$BASE_SHA" == "$candidate" ]]; then
+            echo 'has_bundle=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git update-ref refs/dsh/verify "$candidate"
+          if ! git merge-base --is-ancestor "$BASE_SHA" refs/dsh/verify; then
+            git bundle create "$RUNNER_TEMP/source.bundle" refs/dsh/verify
+          else
+            git bundle create "$RUNNER_TEMP/source.bundle" "$BASE_SHA..refs/dsh/verify"
+          fi
+          git bundle verify "$RUNNER_TEMP/source.bundle" >/dev/null
+          echo 'has_bundle=true' >> "$GITHUB_OUTPUT"
+      - name: Upload healed source bundle
+        if: steps.bundle.outputs.has_bundle == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-bundle-healed
+          path: ${{ runner.temp }}/source.bundle
+          if-no-files-found: error
+          retention-days: 3
+
+  verify_healed:
+    needs: [prepare, heal]
+    if: >-
+      needs.heal.outputs.needs_decision != 'true' &&
+      needs.heal.outputs.candidate_sha != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      TARGET_TAG: ${{ needs.prepare.outputs.target_tag }}
+      BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+      CANDIDATE_SHA: ${{ needs.heal.outputs.candidate_sha }}
+      DSH_DESKTOP_PACKAGE_CACHE_DIR: ${{ runner.temp }}/dsh-desktop-package-cache
+      PNPM_CONFIG_STORE_DIR: ${{ runner.temp }}/pnpm-store
+      DSH_DESKTOP_TARGET_PLATFORM: linux
+      DSH_DESKTOP_TARGET_ARCH: x64
+    outputs:
+      verified_sha: ${{ steps.verify.outputs.verified_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: needs.heal.outputs.has_bundle == 'true'
+        with:
+          name: source-bundle-healed
+          path: ${{ runner.temp }}
+      - name: Check out the bundled candidate
+        run: |
+          set -euo pipefail
+          cp -r scripts/linux-dist "$RUNNER_TEMP/linux-control"
+          if [[ "${{ needs.heal.outputs.has_bundle }}" == "true" ]]; then
+            git bundle verify "$RUNNER_TEMP/source.bundle"
+            git fetch --no-tags "$RUNNER_TEMP/source.bundle" "refs/dsh/verify:refs/dsh/verify"
+            [[ "$(git rev-parse refs/dsh/verify)" == "$CANDIDATE_SHA" ]]
+          fi
+          git checkout --detach "$CANDIDATE_SHA"
+          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
+      - name: Free disk space and install Linux dependencies
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          sudo apt-get update
+          sudo apt-get install -y rpm xvfb dbus-x11 libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libxtst6 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libsecret-1-0
+          df -h
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ${{ env.PNPM_CONFIG_STORE_DIR }}
+            ${{ env.DSH_DESKTOP_PACKAGE_CACHE_DIR }}
+          key: dsh-linux-package-cache-v1-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: dsh-linux-package-cache-v1-
+      - name: Verify bundled candidate
+        id: verify
+        run: |
+          set -euo pipefail
+          export TARGET_TAG=${TARGET_TAG:-$(cat scripts/linux-dist/state/last-synced-tag.txt)}
+          retries=0
+          while true; do
+            sha=$(git rev-parse HEAD)
+            echo "Verifying exact commit $sha"
+            rm -f "$RUNNER_TEMP/linux-failure-stage"
+            if "$RUNNER_TEMP/linux-control/verify-linux.sh" >"$RUNNER_TEMP/linux-verify.log" 2>&1; then
+              cat "$RUNNER_TEMP/linux-verify.log"
+              git diff --exit-code HEAD
+              {
+                echo "result=passed"
+                echo "verified_sha=$sha"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            cat "$RUNNER_TEMP/linux-verify.log"
+            if [[ ! -f "$RUNNER_TEMP/linux-failure-stage" ]]; then
+              printf 'unknown\n' > "$RUNNER_TEMP/linux-failure-stage"
+            fi
+            stage=$(cat "$RUNNER_TEMP/linux-failure-stage")
+            classification=$(node "$RUNNER_TEMP/linux-control/classify-failure.mjs" "$RUNNER_TEMP/linux-verify.log" "$stage")
+            action=$(jq -r .action <<< "$classification")
+            echo "$classification"
+            if [[ "$action" == retry && $retries -lt 2 ]]; then
+              retries=$((retries+1))
+              sleep 10
+              continue
+            fi
+            exit 1
+          done
+      - name: Archive verified artifacts
+        if: steps.verify.outputs.verified_sha != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-x64-${{ steps.verify.outputs.verified_sha }}
+          path: ${{ runner.temp }}/linux-release/*
+          if-no-files-found: error
+
+  publish:
+    needs: [prepare, verify_initial, heal, verify_healed]
+    if: >-
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.verify_initial.result != 'failure' && needs.verify_initial.result != 'cancelled' &&
+      needs.heal.result != 'failure' && needs.heal.result != 'cancelled' &&
+      needs.verify_healed.result != 'failure' && needs.verify_healed.result != 'cancelled' &&
+      (needs.prepare.outputs.needs_decision == 'true' ||
+       needs.verify_initial.outputs.verified_sha != '' ||
+       needs.verify_healed.outputs.verified_sha != '') &&
+      needs.prepare.outputs.dry_run != 'true' &&
+      needs.prepare.outputs.target_tag != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_TAG: ${{ needs.prepare.outputs.target_tag }}
+      SYNC_BRANCH: sync/${{ needs.prepare.outputs.target_tag }}
+      BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+      CANDIDATE_SHA: ${{ needs.heal.outputs.candidate_sha || needs.prepare.outputs.candidate_sha }}
+      VERIFIED_SHA: ${{ needs.verify_healed.outputs.verified_sha || needs.verify_initial.outputs.verified_sha }}
+      NEEDS_DECISION: ${{ needs.prepare.outputs.needs_decision == 'true' || needs.heal.outputs.needs_decision == 'true' }}
+      VERIFY_REF: ${{ inputs.verify_ref }}
+      RELEASE_EXISTING: ${{ inputs.release }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          fetch-depth: 0
+      - name: Configure merge identity
+        run: |
+          git config user.name 'kazv'
+          git config user.email '70378740+k-azv@users.noreply.github.com'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: env.NEEDS_DECISION == 'true'
+        with:
+          name: linux-decision-note
+          path: ${{ runner.temp }}/linux-decision
       - name: Open or update sync PR and decision pause
-        if: env.DRY_RUN != 'true' && env.TARGET_TAG != ''
         id: pr
         run: |
           set -euo pipefail
           body="$RUNNER_TEMP/linux-pr.md"
-          printf 'Sync upstream `%s` into Linux downstream, preserving merge ancestry.\n\nHead: `%s`\n' "$TARGET_TAG" "$(git rev-parse HEAD)" > "$body"
           args=()
-          if [[ -s "$RUNNER_TEMP/dsh-codex/needs-decision.md" ]]; then
-            cat "$RUNNER_TEMP/dsh-codex/needs-decision.md" >> "$body"
+          if [[ "$NEEDS_DECISION" == true ]]; then
+            printf 'Sync upstream `%s` into Linux downstream, preserving merge ancestry.\n\nHead: `%s`\n\n' \
+              "$TARGET_TAG" "$CANDIDATE_SHA" > "$body"
+            cat "$RUNNER_TEMP/linux-decision/needs-decision.md" >> "$body"
             printf '\nOwner: reply with `/decide <instruction>` to continue.\n' >> "$body"
             args+=(--draft)
           else
+            printf 'Sync upstream `%s` into Linux downstream, preserving merge ancestry.\n\nHead: `%s`\n' \
+              "$TARGET_TAG" "$VERIFIED_SHA" > "$body"
             printf '\nValidation: RPM and AppImage build, packaged runtime, Xvfb GUI/Host, Fedora RPM install and version ordering.\n' >> "$body"
           fi
           number=$(gh pr list --base linux --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number // empty')
           if [[ -z "$number" ]]; then
             gh pr create --base linux --head "$SYNC_BRANCH" --title "Linux sync $TARGET_TAG" --body-file "$body" "${args[@]}"
-            number=$(gh pr list --base linux --head "$SYNC_BRANCH" --json number --jq '.[0].number')
+            number=$(gh pr list --base linux --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number')
           else
             gh pr edit "$number" --body-file "$body"
           fi
-          if [[ -s "$RUNNER_TEMP/dsh-codex/needs-decision.md" ]]; then
+          is_draft=$(gh pr view "$number" --json isDraft --jq .isDraft)
+          has_decision_label=$(gh pr view "$number" --json labels --jq '[.labels[].name] | index("needs-decision")')
+          if [[ "$NEEDS_DECISION" == true ]]; then
             gh label create needs-decision --color D4C5F9 --description 'Owner decision required' --force
-            gh pr ready "$number" --undo || [[ $(gh pr view "$number" --json isDraft --jq .isDraft) == true ]]
+            if [[ "$is_draft" != true ]]; then
+              gh pr ready "$number" --undo
+            fi
             gh pr edit "$number" --add-label needs-decision
+          else
+            if [[ "$is_draft" == true ]]; then
+              gh pr ready "$number"
+            fi
+            if [[ "$has_decision_label" != null ]]; then
+              gh pr edit "$number" --remove-label needs-decision
+            fi
           fi
           echo "number=$number" >> "$GITHUB_OUTPUT"
-      - name: Archive verified artifacts
-        if: steps.verify.outputs.verified_sha != ''
-        uses: actions/upload-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: env.NEEDS_DECISION != 'true'
         with:
-          name: linux-x64-${{ steps.verify.outputs.verified_sha }}
-          path: ${{ runner.temp }}/linux-release/*
-          if-no-files-found: error
-      - name: Merge verified sync and publish exact artifacts
+          name: linux-x64-${{ needs.verify_healed.outputs.verified_sha || needs.verify_initial.outputs.verified_sha }}
+          path: ${{ runner.temp }}/linux-release
+      - name: Merge verified sync atomically and publish exact artifacts
         if: >-
-          github.event_name == 'workflow_dispatch' && env.DRY_RUN != 'true' &&
-          env.TARGET_TAG != '' && steps.verify.outputs.verified_sha != '' &&
+          github.event_name == 'workflow_dispatch' &&
+          env.NEEDS_DECISION != 'true' &&
           (env.VERIFY_REF == '' || env.RELEASE_EXISTING == 'true')
         env:
-          VERIFIED_SHA: ${{ steps.verify.outputs.verified_sha }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: |
           set -euo pipefail
-          [[ $(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid) == "$VERIFIED_SHA" ]]
-          [[ $(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name] | index("needs-decision")') == null ]]
-          [[ $(git ls-remote origin refs/heads/linux | cut -f1) == "$BASE_SHA" ]] || { echo 'linux advanced; dispatch a fresh sync and verification' >&2; exit 1; }
-          gh pr ready "$PR_NUMBER" || [[ $(gh pr view "$PR_NUMBER" --json isDraft --jq .isDraft) == false ]]
-          gh pr merge "$PR_NUMBER" --merge --match-head-commit "$VERIFIED_SHA"
-          git fetch origin linux
-          merged=$(git rev-parse FETCH_HEAD)
+          [[ -n "$VERIFIED_SHA" && "$VERIFIED_SHA" == "$CANDIDATE_SHA" ]]
+          pr=$(gh pr view "$PR_NUMBER" --json headRefOid,baseRefName,state,isDraft,labels)
+          [[ $(jq -r .headRefOid <<< "$pr") == "$VERIFIED_SHA" ]]
+          [[ $(jq -r .baseRefName <<< "$pr") == linux ]]
+          [[ $(jq -r .state <<< "$pr") == OPEN ]]
+          [[ $(jq -r .isDraft <<< "$pr") == false ]]
+          [[ $(jq -r '[.labels[].name] | index("needs-decision")' <<< "$pr") == null ]]
+          release_tag="$TARGET_TAG-linux.1"
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            echo "Release $release_tag already exists" >&2
+            exit 1
+          fi
+          git fetch origin "refs/heads/linux:refs/remotes/origin/linux" "$VERIFIED_SHA"
+          [[ $(git rev-parse origin/linux) == "$BASE_SHA" ]] || {
+            echo 'linux advanced; dispatch a fresh sync and verification' >&2
+            exit 1
+          }
+          [[ $(git rev-parse "$VERIFIED_SHA^{commit}") == "$VERIFIED_SHA" ]]
+          git merge-base --is-ancestor "$BASE_SHA" "$VERIFIED_SHA"
+          merged=$(git commit-tree "$VERIFIED_SHA^{tree}" -p "$BASE_SHA" -p "$VERIFIED_SHA" \
+            -m "Merge pull request #$PR_NUMBER from $GITHUB_REPOSITORY/$SYNC_BRANCH")
           [[ $(git rev-parse "$merged^{tree}") == "$(git rev-parse "$VERIFIED_SHA^{tree}")" ]]
-          git merge-base --is-ancestor "$VERIFIED_SHA" "$merged"
+          git push --force-with-lease="refs/heads/linux:$BASE_SHA" origin "$merged:refs/heads/linux"
           (cd "$RUNNER_TEMP/linux-release" && sha256sum -c SHA256SUMS.txt)
-          release_args=()
-          if [[ "$TARGET_TAG" == *-rc.* ]]; then release_args+=(--prerelease); fi
-          gh release create "$TARGET_TAG-linux.1" "${release_args[@]}" --target "$merged" --title "$TARGET_TAG Linux 1" \
-            --notes "Unofficial Linux x64 build. Verified source: $VERIFIED_SHA. SHA256SUMS.txt contains artifact checksums." \
-            "$RUNNER_TEMP/linux-release/"*
+          release_args=(--target "$merged" --title "$TARGET_TAG Linux 1"
+            --notes "Unofficial Linux x64 build. Verified source: $VERIFIED_SHA. SHA256SUMS.txt contains artifact checksums.")
+          if [[ "$TARGET_TAG" == *-rc.* ]]; then
+            release_args+=(--prerelease)
+          fi
+          gh release create "$release_tag" "${release_args[@]}" "$RUNNER_TEMP/linux-release/"*
