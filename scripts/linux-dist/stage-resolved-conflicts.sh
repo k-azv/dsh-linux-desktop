@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 : "${RUNNER_TEMP:?runner temporary directory required}"
-protected_status=$(git status --porcelain --untracked-files=all -- .github/workflows scripts/linux-dist)
+protected_status=$(git status --porcelain --untracked-files=all -- .github/workflows .github/dependabot.yml scripts/linux-dist)
 if [[ -n "$protected_status" ]]; then
   echo 'Protected automation paths changed during healing:' >&2
   printf '%s\n' "$protected_status" >&2

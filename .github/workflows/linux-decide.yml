@@ -63,9 +63,9 @@ jobs:
         run: |
           set -euo pipefail
           bash "$RUNNER_TEMP/linux-control/stage-resolved-conflicts.sh"
-          [[ -z "$(git status --porcelain --untracked-files=all -- .github/workflows scripts/linux-dist)" ]]
+          [[ -z "$(git status --porcelain --untracked-files=all -- .github/workflows .github/dependabot.yml scripts/linux-dist)" ]]
           git add -A
-          [[ -z "$(git diff --cached --name-only -- .github/workflows scripts/linux-dist)" ]]
+          [[ -z "$(git diff --cached --name-only -- .github/workflows .github/dependabot.yml scripts/linux-dist)" ]]
           if ! git diff --cached --quiet; then
             git -c core.hooksPath=/dev/null commit -m "Apply owner decision for $TARGET_TAG"
             git push origin "HEAD:refs/heads/$SYNC_BRANCH"
