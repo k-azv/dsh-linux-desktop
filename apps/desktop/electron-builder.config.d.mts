@@ -21,7 +21,7 @@ export interface DesktopElectronBuilderConfig {
     { readonly from: string, readonly to: 'runtime' },
     ...{
       readonly from: string
-      readonly to: 'dsh' | 'icon.png' | 'tray.ico'
+      readonly to: 'dsh' | 'dsh/node_modules' | 'icon.png' | 'tray.ico'
       readonly filter?: readonly string[]
     }[],
   ]

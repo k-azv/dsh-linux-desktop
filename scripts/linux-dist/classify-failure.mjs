@@ -7,7 +7,7 @@ export function classifyFailure(log, stage, conflicts = false) {
   if (/ENOSPC|no space left on device|disk quota exceeded/i.test(log)) return { category: 'disk', action: 'abort' }
   if (/ERR_PNPM_FETCH_40[134]|401 Unauthorized|403 Forbidden|404 Not Found|authentication failed/i.test(log))
     return { category: 'registry-auth', action: 'abort' }
-  if (/EAI_AGAIN|ECONNRESET|ETIMEDOUT|ENETUNREACH|ERR_PNPM_(?:FETCH|META_FETCH)|HTTP(?:Error)?[^\n]*(?:429|50[0234])|response[^\n]*(?:429|50[0234])|Could not resolve host|TLS handshake|Curl error \((?:5|6|7|28|35|56)\)|toomanyrequests|failed to download metadata|cannot download repomd|network timeout|connection timed out|temporary failure in name resolution|unexpected EOF/i.test(log))
+  if (/EAI_AGAIN|ECONNRESET|ETIMEDOUT|ENETUNREACH|ERR_PNPM_(?:FETCH|META_FETCH)|HTTP(?:Error)?[^\n]*(?:429|50[0234])|response[^\n]*(?:429|50[0234])|Could not resolve host|TLS handshake|Curl error \((?:5|6|7|28|35|56)\)|(?<![a-z0-9./_-])toomanyrequests(?![a-z0-9./_-])|too many requests|failed to download metadata|cannot download repomd|network timeout|connection timed out|temporary failure in name resolution|unexpected EOF/i.test(log))
     return { category: 'network-registry', action: 'retry' }
   if (conflicts) return { category: 'merge-conflict', action: 'heal' }
   if (stage === 'smoke') return { category: 'smoke', action: 'heal' }

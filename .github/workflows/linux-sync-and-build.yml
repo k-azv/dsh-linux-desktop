@@ -321,7 +321,7 @@ jobs:
           while true; do
             sha=$(git rev-parse HEAD)
             echo "Verifying exact commit $sha"
-            rm -f "$RUNNER_TEMP/linux-failure-stage"
+            rm -f "$RUNNER_TEMP/linux-failure-stage" "$RUNNER_TEMP/linux-stage.log"
             if "$RUNNER_TEMP/linux-control/verify-linux.sh" >"$RUNNER_TEMP/linux-verify.log" 2>&1; then
               cat "$RUNNER_TEMP/linux-verify.log"
               git diff --exit-code HEAD
@@ -336,7 +336,9 @@ jobs:
               printf 'unknown\n' > "$RUNNER_TEMP/linux-failure-stage"
             fi
             stage=$(cat "$RUNNER_TEMP/linux-failure-stage")
-            classification=$(node "$RUNNER_TEMP/linux-control/classify-failure.mjs" "$RUNNER_TEMP/linux-verify.log" "$stage")
+            classification_log="$RUNNER_TEMP/linux-stage.log"
+            [[ -f "$classification_log" ]] || classification_log="$RUNNER_TEMP/linux-verify.log"
+            classification=$(node "$RUNNER_TEMP/linux-control/classify-failure.mjs" "$classification_log" "$stage")
             action=$(jq -r .action <<< "$classification")
             echo "$classification"
             if [[ "$action" == retry && $retries -lt 2 ]]; then
@@ -572,7 +574,7 @@ jobs:
           while true; do
             sha=$(git rev-parse HEAD)
             echo "Verifying exact commit $sha"
-            rm -f "$RUNNER_TEMP/linux-failure-stage"
+            rm -f "$RUNNER_TEMP/linux-failure-stage" "$RUNNER_TEMP/linux-stage.log"
             if "$RUNNER_TEMP/linux-control/verify-linux.sh" >"$RUNNER_TEMP/linux-verify.log" 2>&1; then
               cat "$RUNNER_TEMP/linux-verify.log"
               git diff --exit-code HEAD
@@ -587,7 +589,9 @@ jobs:
               printf 'unknown\n' > "$RUNNER_TEMP/linux-failure-stage"
             fi
             stage=$(cat "$RUNNER_TEMP/linux-failure-stage")
-            classification=$(node "$RUNNER_TEMP/linux-control/classify-failure.mjs" "$RUNNER_TEMP/linux-verify.log" "$stage")
+            classification_log="$RUNNER_TEMP/linux-stage.log"
+            [[ -f "$classification_log" ]] || classification_log="$RUNNER_TEMP/linux-verify.log"
+            classification=$(node "$RUNNER_TEMP/linux-control/classify-failure.mjs" "$classification_log" "$stage")
             action=$(jq -r .action <<< "$classification")
             echo "$classification"
             if [[ "$action" == retry && $retries -lt 2 ]]; then

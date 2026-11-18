@@ -11,6 +11,7 @@ This directory builds the unofficial Linux x64 downstream distribution of DeepSe
 ## Linux packaging and sandbox policy
 
 - Linux packages are unsigned (`linux-x64 --unsigned`) and emit both `.rpm` and `.AppImage` artifacts under `apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/`.
+- Linux ships the `dsh` runtime outside `app.asar` under `resources/dsh` (mapping both `dsh` and `dsh/node_modules` explicitly in `extraResources`) and validates `resources/dsh` integrity during `smoke-packaged-runtime.ts`.
 - Retain Chromium's standard sandbox in installed RPM packages by shipping `/opt/DeepSeek Harness/chrome-sandbox` at root-owned mode `4755`; never add `--no-sandbox` to installed launchers or RPM post-install scripts without an explicit `/decide` instruction from the owner.
 - Pre-release `-rc.N` tags map to `~rc.N` in RPM `Version` headers so `dnf` upgrades monotonically through `rc.N` to stable releases.
 

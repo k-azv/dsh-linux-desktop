@@ -166,6 +166,11 @@ export function createElectronBuilderConfig(
         from: buildPaths.dsh,
         to: 'dsh',
         filter: ['**/*', '!**/*.{js,cjs,mjs,ts,cts,mts,css}.map', '!**/*.tsbuildinfo'],
+      }, {
+        // electron-builder excludes a source directory's root node_modules.
+        from: join(buildPaths.dsh, 'node_modules'),
+        to: 'dsh/node_modules',
+        filter: ['**/*'],
       }] : []),
       { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
       // Windows tray bitmaps; macOS keeps the Dock and ships no menu bar icon.

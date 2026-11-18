@@ -33,8 +33,12 @@ function applicationExecutable(application: string, resources: string): string {
 const application = applicationDirectory()
 const resources = resourcesDirectory(application)
 const executable = applicationExecutable(application, resources)
-const descriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(paths.dsh).release.version,
+const stagingDescriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(paths.dsh).release.version,
   resolveDesktopPackageTarget(target))
+const descriptor = linux
+  ? await verifyDesktopRuntime(join(resources, 'dsh'), stagingDescriptor.release.version,
+    resolveDesktopPackageTarget(target))
+  : stagingDescriptor
 if (windows && !values.unsigned) await verifyWindowsCode(application)
 await smokePreparedRuntime(linux ? join(resources, 'dsh') : join(resources, 'app.asar', 'dsh'),
   executable, join(resources, 'runtime'), descriptor)

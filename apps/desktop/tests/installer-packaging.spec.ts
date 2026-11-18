@@ -146,6 +146,12 @@ it('packages Linux dsh as external resources with an RPM-compatible package name
     filter: ['**/*', '!**/*.{js,cjs,mjs,ts,cts,mts,css}.map', '!**/*.tsbuildinfo'],
   })
   expect(dshResource?.from).toMatch(/[\\/]dsh$/u)
+  const dshNodeModules = config.extraResources.find(resource => resource.to === 'dsh/node_modules')
+  expect(dshNodeModules).toMatchObject({
+    to: 'dsh/node_modules',
+    filter: ['**/*'],
+  })
+  expect(dshNodeModules?.from.replaceAll('\\', '/')).toMatch(/\/dsh\/node_modules$/u)
   expect(config.files).not.toContainEqual(expect.objectContaining({ to: 'dsh' }))
   expect(config.files).not.toContainEqual(expect.objectContaining({ to: 'dsh/node_modules' }))
 })
