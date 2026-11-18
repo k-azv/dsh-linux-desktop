@@ -174,7 +174,7 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/codex-cli" --no-audit --no-fund @openai/codex
           export PATH="$RUNNER_TEMP/codex-cli/node_modules/.bin:$PATH"
           "$RUNNER_TEMP/linux-control/prepare-codex-sandbox.sh"
-          "$RUNNER_TEMP/linux-control/run-codex-heal.sh" "$RUNNER_TEMP/linux-merge.log"
+          DSH_CODEX_MODE=merge "$RUNNER_TEMP/linux-control/run-codex-heal.sh" "$RUNNER_TEMP/linux-merge.log"
       - name: Stage resolved conflicts and commit sync checkpoint
         id: checkpoint
         run: |
@@ -448,7 +448,7 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/codex-cli" --no-audit --no-fund @openai/codex
           export PATH="$RUNNER_TEMP/codex-cli/node_modules/.bin:$PATH"
           "$RUNNER_TEMP/linux-control/prepare-codex-sandbox.sh"
-          "$RUNNER_TEMP/linux-control/run-codex-heal.sh" "$RUNNER_TEMP/linux-verify.log"
+          DSH_CODEX_MODE=verify "$RUNNER_TEMP/linux-control/run-codex-heal.sh" "$RUNNER_TEMP/linux-verify.log"
       - name: Stage conflicts and publish healed checkpoint
         id: checkpoint
         run: |

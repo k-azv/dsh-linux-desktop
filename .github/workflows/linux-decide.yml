@@ -17,7 +17,7 @@ jobs:
       github.actor == github.repository_owner &&
       startsWith(github.event.comment.body, '/decide')
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
       PR_NUMBER: ${{ github.event.issue.number }}
@@ -59,7 +59,7 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/codex-cli" --no-audit --no-fund @openai/codex
           export PATH="$RUNNER_TEMP/codex-cli/node_modules/.bin:$PATH"
           "$RUNNER_TEMP/linux-control/prepare-codex-sandbox.sh"
-          "$RUNNER_TEMP/linux-control/run-codex-heal.sh" "$RUNNER_TEMP/decision-context.txt" "$RUNNER_TEMP/owner-instruction.txt"
+          DSH_CODEX_MODE=decide "$RUNNER_TEMP/linux-control/run-codex-heal.sh" "$RUNNER_TEMP/decision-context.txt" "$RUNNER_TEMP/owner-instruction.txt"
       - name: Publish decision checkpoint or resume exact SHA verification
         run: |
           set -euo pipefail

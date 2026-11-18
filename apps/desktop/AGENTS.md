@@ -18,4 +18,5 @@ This directory builds the unofficial Linux x64 downstream distribution of DeepSe
 ## Healing escalation rules
 
 - Do not alter verification gates (`smoke-packaged-runtime.ts`, `xvfb-smoke.sh`, `verify-rpm-fedora.sh`) or skip RPM/sandbox checks when healing a build failure.
+- During `prepare` merge-conflict resolution (`DSH_CODEX_MODE=merge`), resolve only conflicted files and syntax/conflict-marker checks and leave full install/build/smoke to `verify_initial`; during `heal` (`DSH_CODEX_MODE=verify`), make minimal `apps/desktop/` repairs and run focused checks rather than duplicating `verify_healed`.
 - Pause and request an owner decision via `needs-decision` whenever a fix requires relaxing sandbox security, dropping a user-facing Desktop capability, adding system RPM dependencies, or editing files outside `apps/desktop/`.
