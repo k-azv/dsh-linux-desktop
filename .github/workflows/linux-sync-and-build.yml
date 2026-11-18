@@ -220,7 +220,7 @@ jobs:
           fi
       - name: Upload owner decision note
         if: steps.checkpoint.outputs.needs_decision == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-decision-note
           path: ${{ runner.temp }}/dsh-codex/needs-decision.md
@@ -246,7 +246,7 @@ jobs:
           echo 'has_bundle=true' >> "$GITHUB_OUTPUT"
       - name: Upload exact source bundle
         if: steps.bundle.outputs.has_bundle == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: source-bundle-initial
           path: ${{ runner.temp }}/source.bundle
@@ -352,7 +352,7 @@ jobs:
           done
       - name: Upload healable verification failure
         if: steps.verify.outputs.result == 'heal'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: verify-failure-initial
           path: |
@@ -362,7 +362,7 @@ jobs:
           retention-days: 3
       - name: Archive verified artifacts
         if: steps.verify.outputs.result == 'passed'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-x64-${{ steps.verify.outputs.verified_sha }}
           path: ${{ runner.temp }}/linux-release/*
@@ -472,7 +472,7 @@ jobs:
           fi
       - name: Upload owner decision note
         if: steps.checkpoint.outputs.needs_decision == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-decision-note
           path: ${{ runner.temp }}/dsh-codex/needs-decision.md
@@ -498,7 +498,7 @@ jobs:
           echo 'has_bundle=true' >> "$GITHUB_OUTPUT"
       - name: Upload healed source bundle
         if: steps.bundle.outputs.has_bundle == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: source-bundle-healed
           path: ${{ runner.temp }}/source.bundle
@@ -599,7 +599,7 @@ jobs:
           done
       - name: Archive verified artifacts
         if: steps.verify.outputs.verified_sha != ''
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-x64-${{ steps.verify.outputs.verified_sha }}
           path: ${{ runner.temp }}/linux-release/*
