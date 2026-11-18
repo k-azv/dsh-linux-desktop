@@ -59,7 +59,7 @@ jobs:
       target_tag: ${{ steps.source.outputs.target_tag }}
       dry_run: ${{ steps.source.outputs.dry_run }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: linux
           fetch-depth: 0
@@ -272,7 +272,7 @@ jobs:
       result: ${{ steps.verify.outputs.result }}
       verified_sha: ${{ steps.verify.outputs.verified_sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.base_sha }}
           fetch-depth: 0
@@ -393,7 +393,7 @@ jobs:
       needs_decision: ${{ steps.checkpoint.outputs.needs_decision }}
       has_bundle: ${{ steps.bundle.outputs.has_bundle }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.base_sha }}
           fetch-depth: 0
@@ -523,7 +523,7 @@ jobs:
     outputs:
       verified_sha: ${{ steps.verify.outputs.verified_sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.base_sha }}
           fetch-depth: 0
@@ -635,7 +635,7 @@ jobs:
       VERIFY_REF: ${{ inputs.verify_ref }}
       RELEASE_EXISTING: ${{ inputs.release }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.base_sha }}
           fetch-depth: 0
