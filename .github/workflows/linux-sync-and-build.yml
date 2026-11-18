@@ -266,8 +266,6 @@ jobs:
       TARGET_TAG: ${{ needs.prepare.outputs.target_tag }}
       BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
       CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
-      DSH_DESKTOP_PACKAGE_CACHE_DIR: ${{ runner.temp }}/dsh-desktop-package-cache
-      PNPM_CONFIG_STORE_DIR: ${{ runner.temp }}/pnpm-store
       DSH_DESKTOP_TARGET_PLATFORM: linux
       DSH_DESKTOP_TARGET_ARCH: x64
     outputs:
@@ -287,6 +285,8 @@ jobs:
       - name: Check out the bundled candidate
         run: |
           set -euo pipefail
+          echo "DSH_DESKTOP_PACKAGE_CACHE_DIR=$RUNNER_TEMP/dsh-desktop-package-cache" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=$RUNNER_TEMP/pnpm-store" >> "$GITHUB_ENV"
           cp -r scripts/linux-dist "$RUNNER_TEMP/linux-control"
           if [[ "${{ needs.prepare.outputs.has_bundle }}" == "true" ]]; then
             git bundle verify "$RUNNER_TEMP/source.bundle"
@@ -386,8 +386,6 @@ jobs:
       BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
       CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
       SYNC_BRANCH: sync/${{ needs.prepare.outputs.target_tag }}
-      DSH_DESKTOP_PACKAGE_CACHE_DIR: ${{ runner.temp }}/dsh-desktop-package-cache
-      PNPM_CONFIG_STORE_DIR: ${{ runner.temp }}/pnpm-store
       DSH_DESKTOP_TARGET_PLATFORM: linux
       DSH_DESKTOP_TARGET_ARCH: x64
     outputs:
@@ -411,6 +409,8 @@ jobs:
       - name: Check out the bundled candidate
         run: |
           set -euo pipefail
+          echo "DSH_DESKTOP_PACKAGE_CACHE_DIR=$RUNNER_TEMP/dsh-desktop-package-cache" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=$RUNNER_TEMP/pnpm-store" >> "$GITHUB_ENV"
           cp -r scripts/linux-dist "$RUNNER_TEMP/linux-control"
           if [[ "${{ needs.prepare.outputs.has_bundle }}" == "true" ]]; then
             git bundle verify "$RUNNER_TEMP/source.bundle"
@@ -518,8 +518,6 @@ jobs:
       TARGET_TAG: ${{ needs.prepare.outputs.target_tag }}
       BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
       CANDIDATE_SHA: ${{ needs.heal.outputs.candidate_sha }}
-      DSH_DESKTOP_PACKAGE_CACHE_DIR: ${{ runner.temp }}/dsh-desktop-package-cache
-      PNPM_CONFIG_STORE_DIR: ${{ runner.temp }}/pnpm-store
       DSH_DESKTOP_TARGET_PLATFORM: linux
       DSH_DESKTOP_TARGET_ARCH: x64
     outputs:
@@ -538,6 +536,8 @@ jobs:
       - name: Check out the bundled candidate
         run: |
           set -euo pipefail
+          echo "DSH_DESKTOP_PACKAGE_CACHE_DIR=$RUNNER_TEMP/dsh-desktop-package-cache" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=$RUNNER_TEMP/pnpm-store" >> "$GITHUB_ENV"
           cp -r scripts/linux-dist "$RUNNER_TEMP/linux-control"
           if [[ "${{ needs.heal.outputs.has_bundle }}" == "true" ]]; then
             git bundle verify "$RUNNER_TEMP/source.bundle"
