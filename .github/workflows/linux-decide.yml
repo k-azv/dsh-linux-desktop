@@ -1,0 +1,82 @@
+name: Linux owner decision
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+concurrency:
+  group: linux-sync-and-build
+  cancel-in-progress: false
+jobs:
+  decide:
+    if: >-
+      github.event.issue.pull_request != null &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/decide')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.issue.number }}
+      OWNER_INSTRUCTION: ${{ github.event.comment.body }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: linux
+          fetch-depth: 0
+      - name: Validate same-repository sync PR
+        run: |
+          set -euo pipefail
+          gh pr view "$PR_NUMBER" --json headRefName,headRefOid,headRepositoryOwner,isCrossRepository,baseRefName,state > "$RUNNER_TEMP/pr.json"
+          jq -e --arg owner "$GITHUB_REPOSITORY_OWNER" \
+            '.state == "OPEN" and .baseRefName == "linux" and .isCrossRepository == false and .headRepositoryOwner.login == $owner and (.headRefName | startswith("sync/"))' "$RUNNER_TEMP/pr.json"
+          branch=$(jq -r .headRefName "$RUNNER_TEMP/pr.json")
+          tag=${branch#sync/}
+          [[ "$tag" =~ ^dsh-v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]
+          sha=$(jq -r .headRefOid "$RUNNER_TEMP/pr.json")
+          echo "SYNC_BRANCH=$branch" >> "$GITHUB_ENV"
+          echo "TARGET_TAG=$tag" >> "$GITHUB_ENV"
+          cp -r scripts/linux-dist "$RUNNER_TEMP/linux-control"
+          git fetch origin "$branch"
+          [[ $(git rev-parse FETCH_HEAD) == "$sha" ]]
+          git checkout -B "$branch" "$sha"
+          git config user.name 'kazv'
+          git config user.email '70378740+k-azv@users.noreply.github.com'
+          printf '%s\n' "$OWNER_INSTRUCTION" > "$RUNNER_TEMP/owner-instruction.txt"
+          gh pr view "$PR_NUMBER" --json body --jq .body > "$RUNNER_TEMP/decision-context.txt"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+      - name: Apply owner decision using bounded Codex
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/codex-cli" --no-audit --no-fund @openai/codex
+          export PATH="$RUNNER_TEMP/codex-cli/node_modules/.bin:$PATH"
+          "$RUNNER_TEMP/linux-control/run-codex-heal.sh" "$RUNNER_TEMP/decision-context.txt" "$RUNNER_TEMP/owner-instruction.txt"
+      - name: Publish decision checkpoint or resume exact SHA verification
+        run: |
+          set -euo pipefail
+          [[ -z "$(git diff HEAD -- .github/workflows scripts/linux-dist)" ]]
+          [[ -z "$(git diff --name-only --diff-filter=U)" ]]
+          git add -A
+          if ! git diff --cached --quiet; then
+            git -c core.hooksPath=/dev/null commit -m "Apply owner decision for $TARGET_TAG"
+            git push origin "HEAD:refs/heads/$SYNC_BRANCH"
+          fi
+          if [[ -s "$RUNNER_TEMP/dsh-codex/needs-decision.md" ]]; then
+            gh pr edit "$PR_NUMBER" --body-file "$RUNNER_TEMP/dsh-codex/needs-decision.md"
+            gh label create needs-decision --color D4C5F9 --description 'Owner decision required' --force
+            gh pr edit "$PR_NUMBER" --add-label needs-decision
+            gh pr ready "$PR_NUMBER" --undo || [[ $(gh pr view "$PR_NUMBER" --json isDraft --jq .isDraft) == true ]]
+            exit 0
+          fi
+          gh pr edit "$PR_NUMBER" --remove-label needs-decision
+          sha=$(git rev-parse HEAD)
+          gh workflow run linux-sync-and-build.yml --ref linux \
+            -f target_tag="$TARGET_TAG" -f verify_ref="$sha" -f dry_run=false -f release=true
