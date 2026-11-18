@@ -58,6 +58,7 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/codex-cli" --no-audit --no-fund @openai/codex
           export PATH="$RUNNER_TEMP/codex-cli/node_modules/.bin:$PATH"
+          "$RUNNER_TEMP/linux-control/prepare-codex-sandbox.sh"
           "$RUNNER_TEMP/linux-control/run-codex-heal.sh" "$RUNNER_TEMP/decision-context.txt" "$RUNNER_TEMP/owner-instruction.txt"
       - name: Publish decision checkpoint or resume exact SHA verification
         run: |
