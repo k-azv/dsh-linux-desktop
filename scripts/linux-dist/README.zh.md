@@ -6,7 +6,7 @@
 
 ## Repository setup
 
-首次评审并推送后，需将仓库默认分支设为 `linux`；定时检查与 `issue_comment` 工作流均在默认分支上触发。同时需在仓库设置中允许 GitHub Actions 创建和批准 PR、授予工作流令牌声明的写入权限、启用合并提交，并配置 `OPENAI_API_KEY` 仓库密钥（如需使用兼容 Responses 接口的自定义端点，可额外配置 `OPENAI_BASE_URL`）。工作流提交使用下游仓库所有者的 Git 身份。
+首次评审并推送后，需将仓库默认分支设为 `linux`；定时检查与 `issue_comment` 工作流均在默认分支上触发。同时需在仓库设置中允许 GitHub Actions 创建和批准 PR、授予工作流令牌声明的写入权限、启用合并提交，并配置 `OPENAI_API_KEY` 仓库密钥（如需使用兼容 Responses 接口的自定义端点，可额外配置 `OPENAI_BASE_URL`）。配置 `OPENAI_BASE_URL` 时，受限 Codex 默认使用 `deepseek-v4.1-flash`；未配置时除非显式设置 `CODEX_MODEL`，否则使用提供方默认模型，且 `CODEX_REASONING_EFFORT` 默认为 `max`（若显式设置均须非空）。工作流提交使用下游仓库所有者的 Git 身份。
 
 ## Desktop adapter interfaces
 

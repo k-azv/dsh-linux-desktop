@@ -19,6 +19,18 @@ import { createInterface } from 'node:readline'
 const instruction = process.env.DSH_OWNER_INSTRUCTION
   ? readFileSync(process.env.DSH_OWNER_INSTRUCTION, 'utf8') : ''
 const state = `${process.env.RUNNER_TEMP ?? '/tmp'}/dsh-codex`
+const baseUrl = process.env.OPENAI_BASE_URL?.trim()
+const configuredModel = process.env.CODEX_MODEL?.trim()
+if (process.env.CODEX_MODEL !== undefined && !configuredModel) {
+  console.error('CODEX_MODEL must be non-empty when set')
+  process.exit(2)
+}
+const model = configuredModel ?? (baseUrl ? 'deepseek-v4.1-flash' : undefined)
+const reasoningEffort = (process.env.CODEX_REASONING_EFFORT ?? 'max').trim()
+if (!reasoningEffort) {
+  console.error('CODEX_REASONING_EFFORT must be non-empty')
+  process.exit(2)
+}
 const prompt = `Repair only the Linux downstream sync/build/smoke failure. First read apps/desktop/AGENTS.md
 and .agents/notes/implemented/process/. If either is missing, request a decision rather than inventing policy.
 Read the failure log at ${process.env.DSH_CODEX_LOG}. Preserve upstream ancestry and all Linux workflows.
@@ -32,11 +44,13 @@ with: ## Decision, ## Context, ## Options (at least two with tradeoffs), ## Reco
 Then exit successfully without guessing. Otherwise resolve conflicts and repair source only.
 Owner decision (if present):\n${instruction}`
 const args = ['exec', '--json', '--ephemeral', '--sandbox', 'workspace-write', '--add-dir', state,
-  '-c', 'approval_policy="never"']
+  '-c', 'approval_policy="never"',
+  ...(model === undefined ? [] : ['-m', model]),
+  '-c', `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`]
 // OPENAI_BASE_URL selects an API-key provider instead of ChatGPT authentication.
-if (process.env.OPENAI_BASE_URL) {
+if (baseUrl) {
   args.push('-c', 'model_provider="linux_api"', '-c', 'model_providers.linux_api.name="Linux API"',
-    '-c', `model_providers.linux_api.base_url=${JSON.stringify(process.env.OPENAI_BASE_URL)}`,
+    '-c', `model_providers.linux_api.base_url=${JSON.stringify(baseUrl)}`,
     '-c', 'model_providers.linux_api.env_key="OPENAI_API_KEY"', '-c', 'model_providers.linux_api.wire_api="responses"')
 }
 args.push('-')

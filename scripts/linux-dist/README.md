@@ -6,7 +6,7 @@ The `linux` branch preserves full upstream ancestry. Daily checks select the hig
 
 ## Repository setup
 
-After the initial reviewed push, set the repository default branch to `linux`; scheduled and issue-comment workflows are discovered on the default branch. Allow GitHub Actions to create and approve pull requests, and grant workflow tokens the declared write permissions. Enable merge commits. Set the `OPENAI_API_KEY` repository secret, and optionally `OPENAI_BASE_URL` for a Responses-compatible endpoint. Workflow commits use the downstream owner's configured Git identity.
+After the initial reviewed push, set the repository default branch to `linux`; scheduled and issue-comment workflows are discovered on the default branch. Allow GitHub Actions to create and approve pull requests, and grant workflow tokens the declared write permissions. Enable merge commits. Set the `OPENAI_API_KEY` repository secret, and optionally `OPENAI_BASE_URL` for a Responses-compatible endpoint. When `OPENAI_BASE_URL` is set, bounded Codex defaults to `deepseek-v4.1-flash`; otherwise Codex uses its provider default unless `CODEX_MODEL` is set, with `CODEX_REASONING_EFFORT` defaulting to `max` (non-empty when set). Workflow commits use the downstream owner's configured Git identity.
 
 ## Desktop adapter interfaces
 
