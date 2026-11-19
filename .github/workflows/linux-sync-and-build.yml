@@ -745,7 +745,4 @@ jobs:
           (cd "$RUNNER_TEMP/linux-release" && sha256sum -c SHA256SUMS.txt)
           release_args=(--target "$merged" --title "$TARGET_TAG Linux 1"
             --notes "Unofficial Linux x64 build. Verified source: $VERIFIED_SHA. SHA256SUMS.txt contains artifact checksums.")
-          if [[ "$TARGET_TAG" == *-rc.* ]]; then
-            release_args+=(--prerelease)
-          fi
           gh release create "$release_tag" "${release_args[@]}" "$RUNNER_TEMP/linux-release/"*
