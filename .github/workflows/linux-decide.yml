@@ -63,7 +63,7 @@ jobs:
       - name: Publish decision checkpoint or resume exact SHA verification
         run: |
           set -euo pipefail
-          bash "$RUNNER_TEMP/linux-control/stage-resolved-conflicts.sh"
+          DSH_CODEX_MODE=decide bash "$RUNNER_TEMP/linux-control/stage-resolved-conflicts.sh"
           [[ -z "$(git status --porcelain --untracked-files=all -- .github/workflows .github/dependabot.yml scripts/linux-dist)" ]]
           git add -A
           [[ -z "$(git diff --cached --name-only -- .github/workflows .github/dependabot.yml scripts/linux-dist)" ]]

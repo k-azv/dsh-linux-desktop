@@ -15,6 +15,7 @@ export DSH_OWNER_INSTRUCTION="$instruction"
 node --input-type=module <<'JS'
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { basename } from 'node:path'
 import { createInterface } from 'node:readline'
 const instruction = process.env.DSH_OWNER_INSTRUCTION
   ? readFileSync(process.env.DSH_OWNER_INSTRUCTION, 'utf8') : ''
@@ -31,31 +32,34 @@ if (!reasoningEffort) {
   console.error('CODEX_REASONING_EFFORT must be non-empty')
   process.exit(2)
 }
-const mode = (process.env.DSH_CODEX_MODE ?? (instruction ? 'decide' : log.endsWith('linux-merge.log') ? 'merge' : 'verify')).trim()
+const fallbackMode = instruction ? 'decide'
+  : basename(process.env.DSH_CODEX_LOG ?? '') === 'linux-merge.log' ? 'merge' : 'verify'
+const mode = (process.env.DSH_CODEX_MODE ?? fallbackMode).trim()
 if (!['merge', 'verify', 'decide'].includes(mode)) {
   console.error(`Unsupported DSH_CODEX_MODE: ${mode}`)
   process.exit(2)
 }
 const stageInstruction = mode === 'merge'
-  ? `You are in the prepare merge-conflict step. Resolve ONLY the conflicted files,
-verify their syntax or JSON validity, confirm no conflict markers remain, and exit immediately.
+  ? `You are in the prepare merge-conflict step. Resolve ONLY the conflicted files; edit or remove
+conflicted files only. Verify their syntax or JSON validity, confirm no conflict markers remain,
+and exit immediately.
 Do NOT run pnpm install, full packaging (package linux-x64), or smoke/RPM suites:
 verify_initial runs the full verification immediately after prepare.`
   : mode === 'decide'
     ? `You are applying an owner /decide instruction. A draft sync checkpoint may contain committed
 conflict markers; resolve all conflict markers and apply the owner instruction, verify syntax/JSON
-validity and that no conflict markers remain, and do NOT run full packaging or smoke/RPM suites
-because the workflow runs verification after this step.`
+validity and that no conflict markers remain; edit or remove only the files required for the repair.
+Do NOT run full packaging or smoke/RPM suites because the workflow runs verification after this step.`
     : `You are healing a verified build or smoke failure. Make minimal source repairs under
-apps/desktop/ and run only focused local checks rather than duplicating the full verify_healed pipeline.`
+apps/desktop/; edit or remove only the files required for the repair, and run only focused local
+checks rather than duplicating the full verify_healed pipeline.`
 const prompt = `Repair only the Linux downstream sync/build/smoke failure. First read apps/desktop/AGENTS.md
 and .agents/notes/implemented/process/2026-11-18-linux-desktop-distribution.md. If either is missing,
 request a decision rather than inventing policy.
 Read the failure log at ${process.env.DSH_CODEX_LOG}. Preserve upstream ancestry and all Linux workflows.
 Never modify .github/workflows, .github/dependabot.yml, scripts/linux-dist, credentials, git remotes, or release state.
 ${stageInstruction}
-The sandbox mounts .git/index read-only: edit or remove conflicted files only, and do not run git add
-or any other command that writes the index.
+The sandbox mounts .git/index read-only, so do not run git add or any other command that writes the index.
 Do not commit, push, merge, open PRs, release, or use network services other than dependency fetching.
 If a product or architectural choice needs the owner's decision, write ${process.env.DSH_DECISION_FILE}
 with: ## Decision, ## Context, ## Options (at least two with tradeoffs), ## Recommendation.

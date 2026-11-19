@@ -179,7 +179,11 @@ jobs:
         id: checkpoint
         run: |
           set -euo pipefail
-          bash "$RUNNER_TEMP/linux-control/stage-resolved-conflicts.sh"
+          if [[ -n "$TARGET_TAG" && -z "$VERIFY_REF" ]]; then
+            DSH_CODEX_MODE=merge bash "$RUNNER_TEMP/linux-control/stage-resolved-conflicts.sh"
+          else
+            DSH_CODEX_MODE=verify bash "$RUNNER_TEMP/linux-control/stage-resolved-conflicts.sh"
+          fi
           if [[ -n "$TARGET_TAG" && -z "$VERIFY_REF" ]]; then
             [[ -z "$(git status --porcelain --untracked-files=all -- .github/workflows .github/dependabot.yml scripts/linux-dist)" ]] || {
               echo 'Protected automation paths changed before sync commit' >&2
@@ -453,7 +457,7 @@ jobs:
         id: checkpoint
         run: |
           set -euo pipefail
-          bash "$RUNNER_TEMP/linux-control/stage-resolved-conflicts.sh"
+          DSH_CODEX_MODE=verify bash "$RUNNER_TEMP/linux-control/stage-resolved-conflicts.sh"
           [[ -z "$(git status --porcelain --untracked-files=all -- .github/workflows .github/dependabot.yml scripts/linux-dist)" ]] || {
             echo 'Protected automation paths changed during healing' >&2
             exit 1
@@ -461,6 +465,12 @@ jobs:
           git add -A
           protected=$(git diff --cached --name-only -- .github/workflows .github/dependabot.yml scripts/linux-dist)
           [[ -z "$protected" ]] || { echo 'Automation files changed during healing' >&2; exit 1; }
+          outside=$(git diff --cached --name-only -- ':!apps/desktop/')
+          [[ -z "$outside" ]] || {
+            echo 'Files outside apps/desktop changed during healing:' >&2
+            printf '%s\n' "$outside" >&2
+            exit 1
+          }
           if ! git diff --cached --quiet; then
             git -c core.hooksPath=/dev/null commit -m "Repair Linux desktop verification for $TARGET_TAG"
           fi
