@@ -1,7 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
   "description": "Electron desktop shell for a bundled dsh runtime and external plugins",
-  "homepage": "https://github.com/k-azv/dsh-linux-desktop",
   "version": "0.2.2-rc.4",
   "private": true,
   "license": "MIT",
@@ -10,6 +9,7 @@
   },
   "type": "module",
   "main": "lib/main.js",
+  "homepage": "https://github.com/k-azv/dsh-linux-desktop",
   "scripts": {
     "test:installer": "node scripts/test-windows-installer.mjs",
     "build": "tsc -b && pnpm run bundle",
