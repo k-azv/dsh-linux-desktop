@@ -80,8 +80,8 @@ jobs:
             fi
             exit 0
           fi
-          has_decision_label=$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name] | index("needs-decision")')
-          if [[ "$has_decision_label" != null ]]; then
+          has_decision_label=$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name] | any(. == "needs-decision")')
+          if [[ "$has_decision_label" == true ]]; then
             gh pr edit "$PR_NUMBER" --remove-label needs-decision
           fi
           sha=$(git rev-parse HEAD)

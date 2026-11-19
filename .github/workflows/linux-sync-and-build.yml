@@ -689,7 +689,7 @@ jobs:
             gh pr edit "$number" --body-file "$body"
           fi
           is_draft=$(gh pr view "$number" --json isDraft --jq .isDraft)
-          has_decision_label=$(gh pr view "$number" --json labels --jq '[.labels[].name] | index("needs-decision")')
+          has_decision_label=$(gh pr view "$number" --json labels --jq '[.labels[].name] | any(. == "needs-decision")')
           if [[ "$NEEDS_DECISION" == true ]]; then
             gh label create needs-decision --color D4C5F9 --description 'Owner decision required' --force
             if [[ "$is_draft" != true ]]; then
@@ -700,7 +700,7 @@ jobs:
             if [[ "$is_draft" == true ]]; then
               gh pr ready "$number"
             fi
-            if [[ "$has_decision_label" != null ]]; then
+            if [[ "$has_decision_label" == true ]]; then
               gh pr edit "$number" --remove-label needs-decision
             fi
           fi
@@ -725,7 +725,7 @@ jobs:
           [[ $(jq -r .baseRefName <<< "$pr") == linux ]]
           [[ $(jq -r .state <<< "$pr") == OPEN ]]
           [[ $(jq -r .isDraft <<< "$pr") == false ]]
-          [[ $(jq -r '[.labels[].name] | index("needs-decision")' <<< "$pr") == null ]]
+          [[ $(jq -r '[.labels[].name] | any(. == "needs-decision")' <<< "$pr") == false ]]
           release_tag="$TARGET_TAG-linux.1"
           if gh release view "$release_tag" >/dev/null 2>&1; then
             echo "Release $release_tag already exists" >&2
